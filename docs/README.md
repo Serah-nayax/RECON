@@ -147,17 +147,17 @@ pnpm --filter @workspace/dashboard run dev
 ## Documentation
 
 The full user guide is in [`docs/`](docs/README.md).
-
+https://github.com/alphablocks/RECON/tree/main/docs
 | Guide | What it covers |
 |---|---|
-| [What is Recon?](docs/00-what-is-recon.md) | Overview, core concepts and glossary |
-| [Settings and setup](docs/01-settings-and-setup.md) | API keys, integrations and troubleshooting |
-| [ICP library](docs/02-icp-library.md) | Building and tuning Ideal Customer Profiles |
-| [Lead qualifier](docs/03-lead-qualifier.md) | Importing leads, running batches and reading results |
-| [Maps search](docs/04-maps-search.md) | Searching territories and configuring the grid |
-| [Intel reports](docs/05-intel-reports.md) | Overview, contacts, reviews and competitors |
-| [History](docs/06-history.md) | Revisiting and exporting past results |
-| [Scoring system](docs/07-scoring-system.md) | How scores are calculated and calibrated |
+| [What is Recon?](main/docs/00-what-is-recon.md) | Overview, core concepts and glossary |
+| [Settings and setup](main/docs01-settings-and-setup.md) | API keys, integrations and troubleshooting |
+| [ICP library](main/docs/02-icp-library.md) | Building and tuning Ideal Customer Profiles |
+| [Lead qualifier](main/docs/03-lead-qualifier.md) | Importing leads, running batches and reading results |
+| [Maps search](main/docs/04-maps-search.md) | Searching territories and configuring the grid |
+| [Intel reports](main/docs/05-intel-reports.md) | Overview, contacts, reviews and competitors |
+| [History](main/docs/06-history.md) | Revisiting and exporting past results |
+| [Scoring system](main/docs/07-scoring-system.md) | How scores are calculated and calibrated |
 
 ---
 
