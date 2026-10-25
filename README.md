@@ -180,7 +180,7 @@ Any copy or modified version must keep the copyright notice and credit **Salomon
 
 ### Built by Salomon Sverdlov
 
-For commercial licensing, partnerships or enquiries:<br/>
+For enquiries:<br/>
 **[sal.sverdlov@gmail.com](mailto:sal.sverdlov@gmail.com)**
 
 </div>
