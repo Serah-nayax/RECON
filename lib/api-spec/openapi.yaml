@@ -1,0 +1,362 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: crawl
+    description: Business intelligence crawler operations
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /crawl:
+    post:
+      operationId: startCrawl
+      tags: [crawl]
+      summary: Start a crawl job
+      description: |
+        Kick off an async crawl of the given business URL. Returns a jobId immediately.
+        Poll GET /api/crawl/{jobId} for status and results.
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CrawlRequest"
+      responses:
+        "202":
+          description: Job accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CrawlJobAccepted"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    get:
+      operationId: listCrawlJobs
+      tags: [crawl]
+      summary: List all crawl jobs
+      description: Returns all jobs (without full result payloads)
+      security:
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: Job list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CrawlJobList"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /crawl/{jobId}:
+    get:
+      operationId: getCrawlJob
+      tags: [crawl]
+      summary: Get crawl job status and result
+      description: Poll this endpoint until status is "done" or "failed". Result is populated when done.
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Job status and result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CrawlJob"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Job not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: x-api-key
+
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
+    CrawlRequest:
+      type: object
+      required:
+        - url
+      properties:
+        url:
+          type: string
+          description: The business website URL to crawl (e.g. "https://stripe.com")
+          example: "https://stripe.com"
+        depth:
+          type: integer
+          minimum: 1
+          maximum: 3
+          default: 2
+          description: Link-follow depth (1=homepage only, 2=one level deep, 3=two levels)
+        maxPages:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 20
+          description: Maximum number of pages to crawl
+
+    CrawlJobAccepted:
+      type: object
+      required:
+        - jobId
+        - status
+        - message
+      properties:
+        jobId:
+          type: string
+          description: UUID of the crawl job
+        status:
+          type: string
+          enum: [pending]
+        message:
+          type: string
+
+    CrawlJobList:
+      type: object
+      required:
+        - jobs
+      properties:
+        jobs:
+          type: array
+          items:
+            $ref: "#/components/schemas/CrawlJobSummary"
+
+    CrawlJobSummary:
+      type: object
+      required:
+        - jobId
+        - url
+        - status
+        - createdAt
+        - updatedAt
+      properties:
+        jobId:
+          type: string
+        url:
+          type: string
+        depth:
+          type: integer
+        status:
+          type: string
+          enum: [pending, running, done, failed]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        error:
+          type: string
+          nullable: true
+
+    CrawlJob:
+      allOf:
+        - $ref: "#/components/schemas/CrawlJobSummary"
+        - type: object
+          properties:
+            result:
+              $ref: "#/components/schemas/IntelReport"
+              nullable: true
+
+    IntelReport:
+      type: object
+      required:
+        - url
+        - crawledPages
+        - summary
+        - signals
+        - rawPages
+      properties:
+        url:
+          type: string
+        crawledPages:
+          type: integer
+        summary:
+          type: string
+          description: 2-3 sentence executive summary of the business
+        signals:
+          $ref: "#/components/schemas/IntelSignals"
+        rawPages:
+          type: array
+          items:
+            $ref: "#/components/schemas/PageData"
+
+    IntelSignals:
+      type: object
+      properties:
+        company:
+          type: object
+          properties:
+            name:
+              type: string
+              nullable: true
+            description:
+              type: string
+              nullable: true
+            location:
+              type: string
+              nullable: true
+            employees:
+              type: string
+              nullable: true
+            founded:
+              type: string
+              nullable: true
+        hiring:
+          type: object
+          properties:
+            isHiring:
+              type: boolean
+            roles:
+              type: array
+              items:
+                type: string
+            signals:
+              type: array
+              items:
+                type: string
+        pricing:
+          type: object
+          properties:
+            tiers:
+              type: array
+              items:
+                type: string
+            recentChanges:
+              type: array
+              items:
+                type: string
+        techStack:
+          type: array
+          items:
+            type: string
+        news:
+          type: object
+          properties:
+            announcements:
+              type: array
+              items:
+                type: string
+            pressReleases:
+              type: array
+              items:
+                type: string
+        contact:
+          type: object
+          properties:
+            emails:
+              type: array
+              items:
+                type: string
+            phones:
+              type: array
+              items:
+                type: string
+            socialLinks:
+              type: array
+              items:
+                type: string
+
+    PageData:
+      type: object
+      required:
+        - url
+        - title
+        - description
+        - headings
+        - bodyText
+        - links
+        - jsonLd
+      properties:
+        url:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        headings:
+          type: array
+          items:
+            type: string
+        bodyText:
+          type: string
+        links:
+          type: array
+          items:
+            type: string
+        jsonLd:
+          type: array
+          items:
+            type: string
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+        details:
+          type: array
+          items:
+            type: object
