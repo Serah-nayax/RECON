@@ -329,12 +329,3 @@ export async function resetIcp(): Promise<IcpConfig> {
   await persistIcp(reset);
   return { ...reset };
 }
-
-// Legacy compat
-export function updateIcp(updates: Partial<Omit<IcpConfig, "id" | "isActive" | "createdAt" | "updatedAt">>): IcpConfig {
-  const current = getIcp();
-  const updated: IcpConfig = { ...current, ...updates, updatedAt: new Date().toISOString() };
-  store.set(current.id, updated);
-  void persistIcp(updated);
-  return { ...updated };
-}

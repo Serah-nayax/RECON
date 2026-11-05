@@ -17,7 +17,7 @@ router.get("/config", async (_req: Request, res: Response) => {
 });
 
 router.put("/config/:key", async (req: Request, res: Response) => {
-  const { key } = req.params;
+  const key = req.params.key as string;
   const { value, label, category } = req.body as { value: string; label: string; category?: string };
 
   if (!key || !value || !label) {
@@ -35,7 +35,7 @@ router.put("/config/:key", async (req: Request, res: Response) => {
 });
 
 router.delete("/config/:key", async (req: Request, res: Response) => {
-  const { key } = req.params;
+  const key = req.params.key as string;
   try {
     await deleteConfig(key);
     res.json({ success: true });

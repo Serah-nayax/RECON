@@ -1,13 +1,11 @@
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useLocation } from "wouter";
+import { useLocation } from "wouter";
 import { format } from "date-fns";
 import { qualifyApi } from "@/lib/qualifyApi";
-import { useListCrawlJobs, getListCrawlJobsQueryKey } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Globe, Target, ArrowRight, CheckCircle2, XCircle, Clock, AlertCircle } from "lucide-react";
+import { Loader2, Target, ArrowRight, CheckCircle2, XCircle, Clock, AlertCircle } from "lucide-react";
 
 function StatusBadge({ status }: { status: string }) {
   switch (status) {
@@ -30,109 +28,22 @@ function BatchStatusIcon({ status }: { status: string }) {
   return <Clock className="h-4 w-4 text-muted-foreground shrink-0" />;
 }
 
-type Tab = "crawls" | "batches";
-
 export default function History() {
   const [, setLocation] = useLocation();
-  const [tab, setTab] = useState<Tab>("crawls");
-
-  const { data: crawlData, isLoading: crawlLoading, error: crawlError } = useListCrawlJobs({
-    query: { queryKey: getListCrawlJobsQueryKey() }
-  });
-
   const { data: batchData, isLoading: batchLoading, error: batchError } = useQuery({
     queryKey: ["qualify-batches"],
     queryFn: qualifyApi.listBatches,
   });
 
-  const crawlJobs = crawlData?.jobs ?? [];
   const batches = batchData?.batches ?? [];
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div>
         <h1 className="text-3xl font-mono font-bold tracking-tight mb-2">HISTORY</h1>
-        <p className="text-muted-foreground">All past crawls and qualification batches, persisted across sessions.</p>
+        <p className="text-muted-foreground">Every qualification batch, kept across sessions. Past Maps searches are listed on the Maps Search page.</p>
       </div>
 
-      <div className="flex gap-1 border-b border-muted">
-        {([
-          { id: "crawls" as Tab, label: "Crawl Intel", icon: Globe, count: crawlJobs.length },
-          { id: "batches" as Tab, label: "Qual Batches", icon: Target, count: batches.length },
-        ]).map(({ id, label, icon: Icon, count }) => (
-          <button
-            key={id}
-            onClick={() => setTab(id)}
-            className={`flex items-center gap-2 px-4 py-2 text-sm font-mono font-medium border-b-2 transition-colors -mb-px ${
-              tab === id ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <Icon className="h-4 w-4" />
-            {label}
-            {count > 0 && (
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ${tab === id ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"}`}>
-                {count}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
-
-      {tab === "crawls" && (
-        <Card className="border-muted/50 bg-card/50">
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <Globe className="h-4 w-4 text-primary" />
-              Crawl Intel Reports
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {crawlLoading ? (
-              <div className="flex items-center justify-center p-8 text-muted-foreground">
-                <Loader2 className="h-5 w-5 animate-spin mr-2" />
-                <span className="font-mono text-sm">LOADING...</span>
-              </div>
-            ) : crawlError ? (
-              <div className="flex items-center justify-center p-8 text-destructive gap-2">
-                <AlertCircle className="h-5 w-5" />
-                <span className="text-sm">Failed to load crawl history</span>
-              </div>
-            ) : crawlJobs.length === 0 ? (
-              <div className="text-center p-8 text-muted-foreground border border-dashed border-muted rounded-lg">
-                <Globe className="h-8 w-8 mx-auto mb-2 opacity-30" />
-                <p className="font-mono text-sm">NO_CRAWLS_YET</p>
-                <p className="text-xs mt-1">Start a crawl from the Dashboard to see history here.</p>
-              </div>
-            ) : (
-              <div className="divide-y divide-muted/30">
-                {crawlJobs.map((job) => (
-                  <div
-                    key={job.jobId}
-                    className="flex items-center gap-4 py-3 group cursor-pointer hover:bg-muted/10 rounded-md px-2 -mx-2 transition-colors"
-                    onClick={() => setLocation(`/report/${job.jobId}`)}
-                  >
-                    <StatusBadge status={job.status} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate" title={job.url}>{job.url}</p>
-                      <p className="text-xs text-muted-foreground font-mono mt-0.5">
-                        {format(new Date(job.createdAt), "MMM d, yyyy · HH:mm")}
-                        <span className="ml-2 opacity-50">ID: {job.jobId.substring(0, 8)}...</span>
-                      </p>
-                    </div>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground group-hover:text-primary transition-colors shrink-0" asChild>
-                      <Link href={`/report/${job.jobId}`}>
-                        <ArrowRight className="h-4 w-4" />
-                      </Link>
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {tab === "batches" && (
         <Card className="border-muted/50 bg-card/50">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
@@ -191,7 +102,6 @@ export default function History() {
             )}
           </CardContent>
         </Card>
-      )}
     </div>
   );
 }

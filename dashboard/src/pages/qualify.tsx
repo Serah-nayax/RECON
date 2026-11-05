@@ -115,7 +115,7 @@ function detectColumns(headers: string[], rows: string[][]): MappingSummary {
     for (const alias of ALIASES[field]) {
       const idx = normed.indexOf(alias);
       if (idx !== -1 && !used.has(idx)) {
-        (colMap as Record<string, number>)[field] = idx;
+        (colMap as unknown as Record<string, number>)[field] = idx;
         used.add(idx);
         break;
       }
@@ -190,10 +190,6 @@ function rowToLead(cols: string[], { colMap, headers }: MappingSummary): LeadInp
 
   let url = get(colMap.url);
   if (url && !url.startsWith("http")) url = "https://" + url;
-
-  // If a URL column was detected but this row has no value in it, skip the row —
-  // the backend requires every lead to have a URL
-  if (colMap.url !== -1 && !url) return null;
 
   const name = get(colMap.name) || url;
   if (!name && !url) return null;
@@ -307,8 +303,8 @@ function ColMappingPreview({ summary }: {
         )}
       </div>
       {summary.colMap.url === -1 && (
-        <p className="text-xs text-rose-400 flex items-center gap-1.5 mt-1">
-          ✕ No URL column detected — each lead needs a website URL to be crawled and scored. Please check your file headers.
+        <p className="text-xs text-amber-400 flex items-center gap-1.5 mt-1">
+          No website column detected: leads will be scored from their name and other columns only (less accurate).
         </p>
       )}
     </div>
@@ -1401,15 +1397,15 @@ export function Qualify() {
                       </tbody>
                     </table>
                   </div>
-                  {parsed?.summary.colMap.url === -1 && (
+                  {parsed?.summary.colMap.url === -1 && parsed?.summary.colMap.name === -1 && (
                     <p className="text-xs text-rose-400 text-center font-mono">
-                      ✕ Cannot qualify — no URL column found. Check file headers or try a different sheet.
+                      ✕ Cannot qualify — no name or website column found. Check file headers or try a different sheet.
                     </p>
                   )}
                   <Button
                     className="w-full font-mono font-bold"
                     onClick={() => submitMutation.mutate(leads)}
-                    disabled={submitMutation.isPending || parsed?.summary.colMap.url === -1}
+                    disabled={submitMutation.isPending || leads.length === 0 || (parsed?.summary.colMap.url === -1 && parsed?.summary.colMap.name === -1)}
                   >
                     {submitMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
                     QUALIFY {leads.length} LEADS

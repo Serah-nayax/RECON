@@ -11,18 +11,18 @@ import {
   type MapsJob,
   type MapsLead,
   type GridCell,
+  type AreaInput,
+  type AreaSuggestion,
 } from "@/lib/mapsApi";
 import { MapGridPicker } from "@/components/MapGridPicker";
-import { qualifyApi, icpApi, type IcpConfig } from "@/lib/qualifyApi";
-import { type EnrichResult } from "@/lib/mapsApi";
+import { icpApi, type IcpConfig } from "@/lib/qualifyApi";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import {
-  Map, Play, Pause, Globe, Building2, ExternalLink,
+  Map, Play, Pause, ExternalLink,
   Star, MessageSquare, Phone, MapPin, Tag, Clock, Link, Target,
-  ChevronRight, ChevronDown, ChevronUp, Loader2, AlertTriangle, CheckCircle2, Download,
-  Zap, Swords, Send, TrendingUp, Users, Mail, User, X,
+  ChevronRight, Loader2, AlertTriangle, CheckCircle2, Download,
 } from "lucide-react";
 
 const ALL_FIELDS: MapsField[] = [
@@ -44,7 +44,13 @@ const FIELD_ICONS: Record<MapsField, React.ReactNode> = {
 function estimateTimeLeft(job: MapsJob): string {
   const remaining = job.totalCells - job.completedCells;
   if (remaining <= 0) return "finishing...";
-  const mins = Math.ceil(remaining * 1.5);
+  // Use the measured pace once a few cells are done (capped, since time spent paused
+  // also counts as elapsed); before that, assume ~0.75 min per cell (2 cells in parallel).
+  const elapsedMins = (Date.now() - new Date(job.createdAt).getTime()) / 60_000;
+  const minsPerCell = job.completedCells >= 2
+    ? Math.min(elapsedMins / job.completedCells, 1.5)
+    : 0.75;
+  const mins = Math.ceil(remaining * minsPerCell);
   if (mins < 60) return `~${mins}m remaining`;
   const hrs = Math.floor(mins / 60);
   const m = mins % 60;
@@ -67,10 +73,10 @@ function StatusBadge({ status }: { status: MapsJob["status"] }) {
   );
 }
 
-function exportToCsv(job: MapsJob) {
+function exportToCsv(job: MapsJob, leads: MapsLead[]) {
   const fields = job.config.selectedFields;
   const headers = ["name", ...fields].join(",");
-  const rows = job.results.map((lead) => {
+  const rows = leads.map((lead) => {
     const cols = [
       JSON.stringify(lead.name ?? ""),
       ...fields.map((f) => {
@@ -174,579 +180,92 @@ function extractIcpSearchTerms(icp: IcpConfig): string[] {
   return terms.slice(0, 7);
 }
 
-function sigIcon(s: string): string {
-  if (/machine|game|cabinet|pinball|arcade/i.test(s)) return "🎮";
-  if (/redemption|prize|ticket/i.test(s)) return "🏆";
-  if (/cashless|contactless|tap|kiosk|card system/i.test(s)) return "💳";
-  if (/birthday|party|event|corporate/i.test(s)) return "🎂";
-  if (/loyalty|member|reward|vip/i.test(s)) return "⭐";
-  if (/laser/i.test(s)) return "🎯";
-  if (/bowling/i.test(s)) return "🎳";
-  if (/escape/i.test(s)) return "🔐";
-  if (/opportunity|no cashless|upgrade/i.test(s)) return "💡";
-  if (/token|coin/i.test(s)) return "🪙";
-  if (/food|restaurant|dining/i.test(s)) return "🍔";
-  return "·";
+type Relevance = NonNullable<MapsLead["relevance"]>;
+
+const RELEVANCE_GROUPS: { key: Relevance; title: string; hint: string }[] = [
+  {
+    key: "match",
+    title: "Match your search",
+    hint: "Their Google category or name says what you searched.",
+  },
+  {
+    key: "other",
+    title: "Probable",
+    hint: "Found by the search under another category (an escape room, a bar with games...): worth a look.",
+  },
+];
+
+/** The best-known places (most reviews) first. */
+function byReviews(a: MapsLead, b: MapsLead): number {
+  return (b.reviewCount ?? -1) - (a.reviewCount ?? -1);
 }
-
-type EnrichTab = "overview" | "contacts" | "reviews" | "socials" | "venue";
-
-const SOCIAL_ICONS_MAPS: Record<string, string> = {
-  Facebook: "f", Instagram: "ig", LinkedIn: "in", Twitter: "𝕏",
-  YouTube: "▶", TikTok: "tt",
-};
-
-function EnrichPanel({
-  result,
-  onSendToQualify,
-  onClose,
-}: {
-  result: EnrichResult;
-  onSendToQualify: () => void;
-  onClose: () => void;
-}) {
-  const [activeTab, setActiveTab] = useState<EnrichTab>("overview");
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, [onClose]);
-
-  const scoreColor =
-    result.verdict === "QUALIFY" ? "text-emerald-400" :
-    result.verdict === "DISQUALIFY" ? "text-rose-400" : "text-amber-400";
-  const scoreBg =
-    result.verdict === "QUALIFY" ? "bg-emerald-500/10 border-emerald-500/30" :
-    result.verdict === "DISQUALIFY" ? "bg-rose-500/10 border-rose-500/30" :
-    "bg-amber-500/10 border-amber-500/30";
-
-  const dmCount = result.outreachIntel?.decisionMakers?.length ?? 0;
-  const hasReviews = !!(result.reviewAnalysis && (
-    result.reviewAnalysis.strengths.length > 0 ||
-    result.reviewAnalysis.weaknesses.length > 0 ||
-    (result.reviewAnalysis.platformSummaries?.length ?? 0) > 0
-  ));
-  const socialCount = (result.socialProfiles ?? []).length;
-  const hasVenue = !!result.venueIntel;
-
-  const tabs = ([
-    { key: "overview" as EnrichTab,  label: "Overview",  show: true },
-    { key: "contacts" as EnrichTab,  label: "Contacts",  count: dmCount,     show: dmCount > 0 },
-    { key: "reviews"  as EnrichTab,  label: "Reviews",   show: hasReviews },
-    { key: "socials"  as EnrichTab,  label: "Socials",   count: socialCount, show: socialCount > 0 },
-    { key: "venue"    as EnrichTab,  label: "Venue",     show: hasVenue },
-  ] as { key: EnrichTab; label: string; count?: number; show: boolean }[]).filter((t) => t.show);
-
-  const validTab: EnrichTab = tabs.some((t) => t.key === activeTab) ? activeTab : "overview";
-
-  return (
-    <div className="bg-muted/5 border-t border-muted/20">
-      {/* Tab bar */}
-      <div className="flex items-center border-b border-muted/20 px-4 pt-1.5">
-        <div className="flex items-center gap-0 flex-1 min-w-0">
-          {tabs.map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`flex items-center gap-1 px-3 py-2 text-[11px] font-mono font-semibold border-b-2 transition-colors mr-0.5 whitespace-nowrap ${
-                validTab === tab.key
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground/50 hover:text-muted-foreground hover:border-muted/40"
-              }`}
-            >
-              {tab.label}
-              {tab.count != null && tab.count > 0 && (
-                <span className={`inline-flex items-center justify-center min-w-[15px] h-[15px] rounded-full text-[9px] font-bold px-1 ${
-                  validTab === tab.key
-                    ? "bg-primary/20 text-primary"
-                    : "bg-muted/30 text-muted-foreground/40"
-                }`}>
-                  {tab.count}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-        <div className="flex items-center gap-2 shrink-0 pb-1 pl-3">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={onSendToQualify}
-            className="h-6 text-[11px] border-primary/30 text-primary hover:bg-primary/10"
-          >
-            <Send className="h-3 w-3 mr-1" /> Send to Qualifier
-          </Button>
-          <button
-            onClick={onClose}
-            title="Close (Esc)"
-            className="text-muted-foreground/40 hover:text-muted-foreground transition-colors"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      </div>
-
-      {/* Tab content */}
-      <div className="px-4 py-3">
-
-        {/* ── Overview ─────────────────────────────────────────────────────── */}
-        {validTab === "overview" && (
-          <div className="space-y-3.5">
-            {/* Score + verdict */}
-            <div className="flex items-start gap-4">
-              <div className={`shrink-0 rounded-lg border px-4 py-2 text-center ${scoreBg}`}>
-                <div className={`text-2xl font-bold font-mono leading-none ${scoreColor}`}>
-                  {result.score ?? "—"}
-                </div>
-                <div className="text-[9px] text-muted-foreground/50 font-mono mt-0.5">/100</div>
-              </div>
-              <div className="flex-1 min-w-0 space-y-1 pt-0.5">
-                <span className={`text-[11px] font-mono font-semibold px-2 py-0.5 rounded border ${scoreBg} ${scoreColor}`}>
-                  {result.verdict ?? "PENDING"}
-                </span>
-                {result.icpExplanation && (
-                  <p className="text-xs text-muted-foreground/80 leading-relaxed">
-                    {result.icpExplanation}
-                  </p>
-                )}
-                {result.recommendedAction && (
-                  <p className="text-[11px] text-primary/70 flex items-center gap-1 pt-0.5">
-                    <TrendingUp className="h-3 w-3 shrink-0" /> {result.recommendedAction}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {/* Signals */}
-            {(result.keySignals.length > 0 || result.missingSignals.length > 0) && (
-              <div className="space-y-1.5">
-                <p className="text-[10px] font-mono text-muted-foreground/45 uppercase tracking-wider">Signals</p>
-                <div className="flex flex-wrap gap-1">
-                  {result.keySignals.map((s) => (
-                    <span key={s}
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[11px] bg-emerald-500/8 border-emerald-500/20 text-emerald-400 max-w-[220px]"
-                      title={s}
-                    >
-                      <span className="shrink-0">{sigIcon(s)}</span>
-                      <span className="truncate">{s}</span>
-                    </span>
-                  ))}
-                  {result.missingSignals.map((s) => (
-                    <span key={s}
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[11px] bg-rose-500/8 border-rose-500/20 text-rose-400 max-w-[220px]"
-                      title={s}
-                    >
-                      <span className="shrink-0 text-[12px]">✗</span>
-                      <span className="truncate">{s}</span>
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Outreach intel */}
-            {result.outreachIntel && (result.outreachIntel.pitchAngle || result.outreachIntel.openingHook || result.outreachIntel.competitorSystem) && (
-              <div className="space-y-1.5 border-t border-muted/20 pt-3">
-                <p className="text-[10px] font-mono text-muted-foreground/45 uppercase tracking-wider flex items-center gap-1">
-                  <Zap className="h-2.5 w-2.5" /> Outreach Intel
-                </p>
-                {result.outreachIntel.pitchAngle && (
-                  <p className="text-xs text-muted-foreground/90 leading-relaxed">{result.outreachIntel.pitchAngle}</p>
-                )}
-                {result.outreachIntel.openingHook && (
-                  <p className="text-[11px] text-primary/60 italic">"{result.outreachIntel.openingHook}"</p>
-                )}
-                {result.outreachIntel.competitorSystem && (
-                  <span className="flex items-center gap-1 text-[11px] text-amber-400/80">
-                    <Swords className="h-3 w-3 shrink-0" />
-                    Current system: <strong>{result.outreachIntel.competitorSystem}</strong>
-                  </span>
-                )}
-              </div>
-            )}
-
-            {/* Competitor analysis */}
-            {result.competitorAnalysis && (
-              <div className="flex items-start gap-2 border-t border-muted/20 pt-2.5">
-                <Swords className="h-3 w-3 text-violet-400 shrink-0 mt-0.5" />
-                <div className="min-w-0">
-                  <span className="text-[11px] text-violet-400 font-semibold">
-                    {result.competitorAnalysis.vendorName}
-                  </span>
-                  {result.competitorAnalysis.competitiveAngle && (
-                    <p className="text-[11px] text-muted-foreground/60 mt-0.5 leading-snug">
-                      {result.competitorAnalysis.competitiveAngle}
-                    </p>
-                  )}
-                  {result.competitorAnalysis.strategicOverview && (
-                    <p className="text-[10px] text-muted-foreground/45 mt-1 leading-snug italic">
-                      {result.competitorAnalysis.strategicOverview}
-                    </p>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ── Contacts ─────────────────────────────────────────────────────── */}
-        {validTab === "contacts" && (
-          <div className="space-y-2">
-            <p className="text-[10px] font-mono text-muted-foreground/45 uppercase tracking-wider flex items-center gap-1 mb-3">
-              <Users className="h-2.5 w-2.5" /> Decision Makers ({dmCount})
-            </p>
-            {(result.outreachIntel?.decisionMakers ?? []).map((dm, i) => (
-              <div key={i} className="rounded-md border border-emerald-500/15 bg-emerald-500/5 px-3 py-2.5 space-y-1.5">
-                <div className="flex items-center gap-2">
-                  <User className="h-3.5 w-3.5 shrink-0 text-emerald-400/60" />
-                  <span className="text-[12px] font-semibold text-foreground/85">{dm.name}</span>
-                  {dm.title && (
-                    <span className="text-[10px] text-muted-foreground/50 font-mono truncate">· {dm.title}</span>
-                  )}
-                </div>
-                <div className="pl-[22px] space-y-1">
-                  {dm.email && (
-                    <div className="flex items-center gap-1.5">
-                      <Mail className="h-2.5 w-2.5 shrink-0 text-muted-foreground/40" />
-                      <a href={`mailto:${dm.email}`}
-                        className="text-[11px] text-sky-400/80 hover:text-sky-400 transition-colors">
-                        {dm.email}
-                      </a>
-                    </div>
-                  )}
-                  {dm.phone && (
-                    <div className="flex items-center gap-1.5">
-                      <Phone className="h-2.5 w-2.5 shrink-0 text-muted-foreground/40" />
-                      <span className="text-[11px] font-mono text-muted-foreground/70">{dm.phone}</span>
-                    </div>
-                  )}
-                  {!dm.email && !dm.phone && (
-                    <p className="text-[10px] text-muted-foreground/35 italic">No contact details found</p>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* ── Reviews ──────────────────────────────────────────────────────── */}
-        {validTab === "reviews" && result.reviewAnalysis && (
-          <div className="space-y-3">
-            {/* Sentiment + platform summaries */}
-            <div className="flex items-center gap-2 flex-wrap">
-              {result.reviewAnalysis.sentiment && (() => {
-                const s = result.reviewAnalysis!.sentiment;
-                const cls =
-                  s === "Excellent" ? "bg-emerald-500/10 border-emerald-500/25 text-emerald-400" :
-                  s === "Good"      ? "bg-sky-500/10 border-sky-500/25 text-sky-400" :
-                  s === "Mixed"     ? "bg-amber-500/10 border-amber-500/25 text-amber-400" :
-                                      "bg-rose-500/10 border-rose-500/25 text-rose-400";
-                return (
-                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[10px] font-mono font-semibold ${cls}`}>
-                    <Star className="h-2.5 w-2.5" /> {s}
-                  </span>
-                );
-              })()}
-            </div>
-
-            {/* Platform summaries */}
-            {(result.reviewAnalysis.platformSummaries ?? []).length > 0 && (
-              <div className="space-y-1.5">
-                <p className="text-[10px] font-mono text-muted-foreground/45 uppercase tracking-wider">Platforms</p>
-                <div className="flex flex-col gap-1">
-                  {result.reviewAnalysis.platformSummaries!.map((p) => (
-                    <div key={p.platform}
-                      className="flex items-center gap-2 text-[11px] rounded-md bg-muted/10 px-2.5 py-1.5 border border-muted/15">
-                      <span className="text-muted-foreground/60 font-mono min-w-[80px] shrink-0">{p.platform}</span>
-                      {p.rating != null && (
-                        <span className="text-amber-400 flex items-center gap-0.5">
-                          <Star className="h-2.5 w-2.5 fill-current" /> {p.rating}
-                        </span>
-                      )}
-                      {p.reviewCount != null && (
-                        <span className="text-muted-foreground/45">({p.reviewCount.toLocaleString()} reviews)</span>
-                      )}
-                      {p.url && (
-                        <a href={p.url} target="_blank" rel="noopener noreferrer"
-                          className="ml-auto text-muted-foreground/30 hover:text-primary transition-colors">
-                          <ExternalLink className="h-3 w-3" />
-                        </a>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Strengths */}
-            {result.reviewAnalysis.strengths.length > 0 && (
-              <div className="space-y-1.5">
-                <p className="text-[10px] font-mono text-emerald-500/70 uppercase tracking-wider">Strengths ({result.reviewAnalysis.strengths.length})</p>
-                <div className="space-y-1">
-                  {result.reviewAnalysis.strengths.map((s, i) => (
-                    <div key={i} className="border-l-[3px] border-l-emerald-500/40 bg-emerald-500/5 px-2.5 py-1.5 rounded-r-md">
-                      <p className="text-[11px] font-medium text-emerald-300/80" title={s.summary}>✓ {s.summary}</p>
-                      {s.quote && (
-                        <p className="text-[10px] text-muted-foreground/50 italic mt-0.5">"{s.quote}"</p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Weaknesses */}
-            {result.reviewAnalysis.weaknesses.length > 0 && (
-              <div className="space-y-1.5">
-                <p className="text-[10px] font-mono text-rose-400/70 uppercase tracking-wider">Weaknesses ({result.reviewAnalysis.weaknesses.length})</p>
-                <div className="space-y-1">
-                  {result.reviewAnalysis.weaknesses.map((w, i) => (
-                    <div key={i} className="border-l-[3px] border-l-rose-500/40 bg-rose-500/5 px-2.5 py-1.5 rounded-r-md">
-                      <p className="text-[11px] font-medium text-rose-400/80" title={w.summary}>⚠ {w.summary}</p>
-                      {w.quote && (
-                        <p className="text-[10px] text-muted-foreground/50 italic mt-0.5">"{w.quote}"</p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Aspect scores */}
-            {(result.reviewAnalysis.aspects ?? []).length > 0 && (
-              <div className="space-y-1.5">
-                <p className="text-[10px] font-mono text-muted-foreground/45 uppercase tracking-wider">Aspect Scores</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {result.reviewAnalysis.aspects!.map((a, i) => (
-                    <div key={i}
-                      className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-muted/20 bg-muted/10"
-                      title={a.quote ?? a.name}>
-                      <span className="text-[10px] text-muted-foreground/60 font-mono">{a.name}</span>
-                      <span className={`text-[11px] font-bold font-mono ${
-                        a.score >= 4 ? "text-emerald-400" :
-                        a.score >= 3 ? "text-amber-400" : "text-rose-400"
-                      }`}>{a.score}/5</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ── Socials ──────────────────────────────────────────────────────── */}
-        {validTab === "socials" && (
-          <div className="space-y-2">
-            <p className="text-[10px] font-mono text-muted-foreground/45 uppercase tracking-wider flex items-center gap-1 mb-3">
-              Social Profiles ({socialCount})
-            </p>
-            {(result.socialProfiles ?? []).map((sp, i) => (
-              <div key={i} className="rounded-md border border-violet-500/15 bg-violet-500/5 px-3 py-2.5 space-y-1.5">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] font-mono font-bold text-violet-400/80">
-                      {SOCIAL_ICONS_MAPS[sp.platform] ?? sp.platform.slice(0, 2).toUpperCase()}
-                    </span>
-                    <span className="text-[12px] font-semibold text-foreground/80">{sp.platform}</span>
-                    {sp.followers && (
-                      <span className="text-[10px] text-muted-foreground/50 font-mono">{sp.followers} followers</span>
-                    )}
-                  </div>
-                  {sp.url && (
-                    <a href={sp.url} target="_blank" rel="noopener noreferrer"
-                      className="text-muted-foreground/30 hover:text-violet-400/70 transition-colors shrink-0">
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                  )}
-                </div>
-                {sp.bio && (
-                  <p className="text-[11px] text-muted-foreground/65 leading-relaxed italic">"{sp.bio}"</p>
-                )}
-                {sp.postTone && (
-                  <p className="text-[10px] text-muted-foreground/40 font-mono">tone: {sp.postTone}</p>
-                )}
-                {(sp.categoryTags ?? []).length > 0 && (
-                  <div className="flex flex-wrap gap-1 pt-0.5">
-                    {sp.categoryTags!.map((tag, j) => (
-                      <span key={j}
-                        className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-violet-500/10 border border-violet-500/20 text-violet-400/70">
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* ── Venue ────────────────────────────────────────────────────────── */}
-        {validTab === "venue" && result.venueIntel && (
-          <div className="space-y-3">
-            <p className="text-[10px] font-mono text-muted-foreground/45 uppercase tracking-wider flex items-center gap-1">
-              <Building2 className="h-2.5 w-2.5" /> Venue Intelligence
-            </p>
-
-            {/* Key facts */}
-            <div className="flex flex-wrap gap-x-5 gap-y-2">
-              {result.venueIntel.estimatedMachineCount && result.venueIntel.estimatedMachineCount !== "unknown" && (
-                <div>
-                  <p className="text-[9px] font-mono text-muted-foreground/40 uppercase tracking-wider mb-0.5">Machines</p>
-                  <p className="text-[13px] font-semibold font-mono text-foreground/80">{result.venueIntel.estimatedMachineCount}</p>
-                </div>
-              )}
-              {result.venueIntel.paymentSystem && result.venueIntel.paymentSystem !== "unknown" && (
-                <div>
-                  <p className="text-[9px] font-mono text-muted-foreground/40 uppercase tracking-wider mb-0.5">Payment System</p>
-                  <p className="text-[13px] font-semibold font-mono text-foreground/80">{result.venueIntel.paymentSystem}</p>
-                </div>
-              )}
-              {result.venueIntel.venueType && result.venueIntel.venueType !== "unknown" && (
-                <div>
-                  <p className="text-[9px] font-mono text-muted-foreground/40 uppercase tracking-wider mb-0.5">Venue Type</p>
-                  <p className="text-[13px] font-semibold font-mono text-foreground/80">{result.venueIntel.venueType}</p>
-                </div>
-              )}
-            </div>
-
-            {/* Feature flags */}
-            <div className="grid grid-cols-2 gap-1.5 pt-1">
-              {([
-                { k: "Redemption",   v: result.venueIntel.hasRedemption },
-                { k: "Loyalty",      v: result.venueIntel.hasLoyalty },
-                { k: "Food & Bev",   v: result.venueIntel.hasFoodBeverage },
-                { k: "Party Rooms",  v: result.venueIntel.hasPartyRooms },
-                {
-                  k: result.venueIntel.isChain && result.venueIntel.chainName
-                    ? `Chain: ${result.venueIntel.chainName}`
-                    : "Chain",
-                  v: result.venueIntel.isChain,
-                },
-              ] as const).map(({ k, v }) => (
-                <div key={k}
-                  className={`flex items-center gap-2 rounded-md border px-2.5 py-1.5 ${
-                    v
-                      ? "border-emerald-500/20 bg-emerald-500/5"
-                      : "border-muted/15 bg-muted/5"
-                  }`}>
-                  <span className={`text-[12px] font-bold leading-none ${v ? "text-emerald-400" : "text-muted-foreground/25"}`}>
-                    {v ? "✓" : "✗"}
-                  </span>
-                  <span className={`text-[11px] font-mono truncate ${v ? "text-foreground/70" : "text-muted-foreground/30"}`}>
-                    {k}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-      </div>
-    </div>
-  );
-}
-
-type ScoreFilter = "all" | "QUALIFY" | "BORDERLINE" | "DISQUALIFY";
 
 function LeadsTable({
   leads,
   selectedFields,
-  expandedLeadId,
-  onToggleExpand,
-  onEnrich,
   onSendToQualify,
-  scoreFilter = "all",
+  qualifyingId,
 }: {
   leads: MapsLead[];
   selectedFields: MapsField[];
-  expandedLeadId: string | null;
-  onToggleExpand: (id: string) => void;
-  onEnrich: (lead: MapsLead) => void;
   onSendToQualify: (lead: MapsLead) => void;
-  scoreFilter?: ScoreFilter;
+  qualifyingId: string | null;
 }) {
-  const filteredLeads =
-    scoreFilter === "all"
-      ? leads
-      : leads.filter((l) => l.enrichResult?.verdict === scoreFilter);
   const cols = selectedFields;
   const totalCols = cols.length + 2;
+  const groups = RELEVANCE_GROUPS.map((group) => ({
+    ...group,
+    leads: leads.filter((lead) => (lead.relevance ?? "other") === group.key).sort(byReviews),
+  })).filter((group) => group.leads.length > 0);
 
   return (
-    <div>
-      {filteredLeads.length === 0 && scoreFilter !== "all" && (
-        <div className="py-8 text-center text-sm text-muted-foreground font-mono">
-          No {scoreFilter.toLowerCase()} leads yet — enrich some leads first.
-        </div>
-      )}
-      {(filteredLeads.length > 0 || scoreFilter === "all") && (
-      <table className="w-full text-xs">
-        <thead>
-          <tr className="border-b border-muted/30 bg-muted/10">
-            <th className="text-left py-2 px-3 font-mono text-muted-foreground whitespace-nowrap">
-              Name
+    <table className="w-full text-xs">
+      <thead className="sticky top-0 z-10 bg-background">
+        <tr className="border-b border-muted/30 bg-muted/10">
+          <th className="text-left py-2 px-3 font-mono text-muted-foreground whitespace-nowrap">Name</th>
+          {cols.map((f) => (
+            <th key={f} className="text-left py-2 px-3 font-mono text-muted-foreground whitespace-nowrap">
+              <span className="flex items-center gap-1">
+                {FIELD_ICONS[f]}
+                {FIELD_LABELS[f]}
+              </span>
             </th>
-            {cols.map((f) => (
-              <th key={f} className="text-left py-2 px-3 font-mono text-muted-foreground whitespace-nowrap">
-                <span className="flex items-center gap-1">
-                  {FIELD_ICONS[f]}
-                  {FIELD_LABELS[f]}
-                </span>
-              </th>
-            ))}
-            <th className="py-2 px-3 font-mono text-muted-foreground text-right whitespace-nowrap">
-              Actions
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {filteredLeads.map((lead, leadIndex) => {
-            const isExpanded = expandedLeadId === lead.id;
-            const status = lead.enrichStatus;
-            const detailStatus = lead.detailStatus;
-            const isDone = status === "done";
-            const isRunning = status === "running";
-            const isFailed = status === "failed";
-
-            return (
-              <React.Fragment key={`${lead.id || lead.name}-${leadIndex}`}>
+          ))}
+          <th className="py-2 px-3 font-mono text-muted-foreground text-right whitespace-nowrap">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {groups.map((group) => {
+          return (
+            <React.Fragment key={group.key}>
+              <tr className="border-b border-muted/20 bg-muted/5">
+                <td colSpan={totalCols} className="py-1.5 px-3">
+                  <div className="flex items-center gap-2 text-[11px] font-mono" title={group.hint}>
+                    <span className={`font-semibold ${group.key === "match" ? "text-emerald-400" : "text-foreground/80"}`}>
+                      {group.title} ({group.leads.length})
+                    </span>
+                    <span className="text-muted-foreground/60 truncate">{group.hint}</span>
+                  </div>
+                </td>
+              </tr>
+              {group.leads.map((lead, leadIndex) => (
                 <tr
-                  className={`border-b border-muted/15 transition-colors ${
-                    isDone ? "bg-emerald-500/3 hover:bg-emerald-500/6" : "hover:bg-muted/5"
-                  } ${isExpanded ? "border-b-0" : ""}`}
+                  key={`${lead.id || lead.name}-${leadIndex}`}
+                  className="border-b border-muted/15 transition-colors hover:bg-muted/5"
                 >
                   <td className="py-2 px-3 font-medium whitespace-nowrap max-w-[220px] truncate">
                     <div className="flex items-center gap-1.5">
-                      {detailStatus === "running" && (
+                      {lead.detailStatus === "running" && (
                         <span className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono text-blue-400 bg-blue-500/10 border border-blue-500/20">
                           <Loader2 className="h-2.5 w-2.5 animate-spin" /> details
                         </span>
                       )}
-                      {detailStatus === "failed" && (
+                      {lead.detailStatus === "failed" && (
                         <span
                           title={lead.detailError ?? "Detail extraction failed"}
                           className="shrink-0 inline-flex px-1.5 py-0.5 rounded text-[9px] font-mono text-amber-400 bg-amber-500/10 border border-amber-500/20"
                         >
                           partial
-                        </span>
-                      )}
-                      {isDone && lead.enrichResult && (
-                        <span className={`shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-mono font-semibold border ${
-                          lead.enrichResult.verdict === "QUALIFY"
-                            ? "bg-emerald-500/12 border-emerald-500/25 text-emerald-400"
-                            : lead.enrichResult.verdict === "DISQUALIFY"
-                            ? "bg-rose-500/12 border-rose-500/25 text-rose-400"
-                            : "bg-amber-500/12 border-amber-500/25 text-amber-400"
-                        }`}>
-                          {lead.enrichResult.score}
-                        </span>
-                      )}
-                      {isDone && !lead.enrichResult && (
-                        <span className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-mono font-semibold bg-emerald-500/12 border border-emerald-500/25 text-emerald-400">
-                          enriched
                         </span>
                       )}
                       <span className="truncate">{lead.name}</span>
@@ -758,82 +277,35 @@ function LeadsTable({
                     </td>
                   ))}
                   <td className="py-2 px-3 whitespace-nowrap">
-                    <div className="flex items-center justify-end gap-1.5">
-                      {/* Enrich-state controls */}
-                      {isRunning && (
-                        <span className="flex items-center gap-1.5 text-[11px] text-primary font-mono">
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" /> Enriching…
-                        </span>
-                      )}
-                      {isFailed && (
-                        <>
-                          <span className="text-[10px] text-rose-400 font-mono">failed</span>
-                          {lead.website && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-6 px-2 text-[10px] text-rose-400 hover:text-rose-300 hover:bg-rose-500/10"
-                              onClick={() => onEnrich(lead)}
-                            >
-                              Retry
-                            </Button>
-                          )}
-                        </>
-                      )}
-                      {isDone && (
-                        <button
-                          onClick={() => onToggleExpand(lead.id)}
-                          className="flex items-center gap-1 text-emerald-400 hover:text-emerald-300 transition-colors text-[11px] font-mono"
-                        >
-                          {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                          {isExpanded ? "Close" : "View"}
-                        </button>
-                      )}
-                      {!isRunning && !isDone && !isFailed && lead.website && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-6 px-2 text-[10px] border-primary/30 text-primary hover:bg-primary/10"
-                          onClick={() => onEnrich(lead)}
-                        >
-                          <Zap className="h-3 w-3 mr-1" /> Enrich
-                        </Button>
-                      )}
-                      {!lead.website && !isRunning && !isDone && !isFailed && (
-                        <span className="text-[10px] text-muted-foreground/30">no URL</span>
-                      )}
-                      {/* Qualify button — always visible for leads with a website */}
-                      {lead.website && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-6 px-2 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted/20 border border-muted/30"
-                          onClick={() => onSendToQualify(lead)}
-                        >
-                          <Target className="h-3 w-3 mr-1" /> Qualify
-                        </Button>
-                      )}
+                    <div className="flex items-center justify-end">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 px-2 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted/20 border border-muted/30"
+                        onClick={() => onSendToQualify(lead)}
+                        disabled={qualifyingId === lead.id}
+                        title={
+                          lead.website
+                            ? "Score this place against your ICP in the Lead Qualifier"
+                            : "No website on Google Maps: it is scored from its name, category and Google Maps data"
+                        }
+                      >
+                        {qualifyingId === lead.id ? (
+                          <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                        ) : (
+                          <Target className="h-3 w-3 mr-1" />
+                        )}
+                        Qualify
+                      </Button>
                     </div>
                   </td>
                 </tr>
-                {isExpanded && isDone && lead.enrichResult && (
-                  <tr key={`${lead.id}-panel`} className="border-b border-muted/15">
-                    <td colSpan={totalCols} className="p-0">
-                      <EnrichPanel
-                        result={lead.enrichResult}
-                        onSendToQualify={() => onSendToQualify(lead)}
-                        onClose={() => onToggleExpand(lead.id)}
-                      />
-                    </td>
-                  </tr>
-                )}
-              </React.Fragment>
-            );
-          })}
-        </tbody>
-      </table>
-      )}
-    </div>
+              ))}
+            </React.Fragment>
+          );
+        })}
+      </tbody>
+    </table>
   );
 }
 
@@ -841,46 +313,16 @@ function JobProgress({ jobId, onBack }: { jobId: string; onBack: () => void }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const [expandedLeadId, setExpandedLeadId] = useState<string | null>(null);
-  const [scoreFilter, setScoreFilter] = useState<ScoreFilter>("all");
 
   const { data: job } = useQuery({
     queryKey: ["maps-job", jobId],
     queryFn: () => mapsApi.getJob(jobId),
     refetchInterval: (q) => {
       const s = q.state.data?.status;
-      const hasEnriching = q.state.data?.results?.some((r) => r.enrichStatus === "running");
       const hasDetailWork = q.state.data?.results?.some((r) => r.detailStatus === "running");
-      return s === "running" || s === "pending" || hasEnriching || hasDetailWork ? 2000 : false;
+      return s === "running" || s === "pending" || hasDetailWork ? 2000 : false;
     },
   });
-
-  // Keep one long-held request open while the job has background work, so the
-  // published (Autoscale) server keeps full CPU for the headless browser.
-  const jobHasActiveWork =
-    job?.status === "running" ||
-    job?.status === "pending" ||
-    !!job?.results?.some((r) => r.enrichStatus === "running" || r.detailStatus === "running");
-  useEffect(() => {
-    if (!jobHasActiveWork) return;
-    const controller = new AbortController();
-    let stopped = false;
-    (async () => {
-      while (!stopped) {
-        try {
-          const r = await mapsApi.keepAlive(jobId, controller.signal);
-          if (!r.active) break;
-        } catch {
-          if (stopped) break;
-          await new Promise((res) => setTimeout(res, 2000));
-        }
-      }
-    })();
-    return () => {
-      stopped = true;
-      controller.abort();
-    };
-  }, [jobId, jobHasActiveWork]);
 
   const pauseMut = useMutation({
     mutationFn: () => mapsApi.pause(jobId),
@@ -894,24 +336,6 @@ function JobProgress({ jobId, onBack }: { jobId: string; onBack: () => void }) {
 
   const [, setLocation] = useLocation();
 
-  const enrichMut = useMutation({
-    mutationFn: (lead: MapsLead) => mapsApi.enrichLead(jobId, lead.id),
-    onSuccess: (_res, lead) => {
-      toast({ title: "Enrichment started", description: `Crawling ${lead.name}...` });
-      queryClient.invalidateQueries({ queryKey: ["maps-job", jobId] });
-    },
-    onError: (e) => toast({ title: "Enrich failed", description: e.message, variant: "destructive" }),
-  });
-
-  const enrichAllMut = useMutation({
-    mutationFn: () => mapsApi.enrichAll(jobId),
-    onSuccess: (res) => {
-      toast({ title: "Bulk enrichment started", description: res.message });
-      queryClient.invalidateQueries({ queryKey: ["maps-job", jobId] });
-    },
-    onError: (e) => toast({ title: "Enrich All failed", description: e.message, variant: "destructive" }),
-  });
-
   const qualifyAllMut = useMutation({
     mutationFn: () => mapsApi.qualifyAll(jobId),
     onSuccess: (res) => {
@@ -921,14 +345,9 @@ function JobProgress({ jobId, onBack }: { jobId: string; onBack: () => void }) {
     onError: (e) => toast({ title: "Bulk qualify failed", description: e.message, variant: "destructive" }),
   });
 
+  // Same route as "Qualify All", so one place is sent exactly like all of them (website or not).
   const qualifyMut = useMutation({
-    mutationFn: (lead: MapsLead) =>
-      qualifyApi.submit([{
-        name: lead.name,
-        url: lead.website!,
-        category: lead.category,
-        city: lead.address,
-      }]),
+    mutationFn: (lead: MapsLead) => mapsApi.qualifyAll(jobId, [lead.id]),
     onSuccess: (res) => {
       toast({ title: "Lead sent to Qualifier", description: "Opening Lead Qualifier..." });
       setTimeout(() => setLocation(`/qualify?batch=${res.batchId}`), 600);
@@ -957,6 +376,23 @@ function JobProgress({ jobId, onBack }: { jobId: string; onBack: () => void }) {
   const detailDone = job.results.filter((lead) => lead.detailStatus === "done").length;
   const detailFailed = job.results.filter((lead) => lead.detailStatus === "failed").length;
   const detailRunning = job.results.filter((lead) => lead.detailStatus === "running").length;
+  const failedCells = job.cells.filter((cell) => cell.status === "failed").length;
+  const splitSkippedCells = job.cells.filter((cell) => cell.splitSkipped).length;
+  const refinementCells = job.cells.filter((cell) => cell.refinement && cell.status !== "skipped");
+  const refinementPending = refinementCells.filter((cell) => cell.status === "pending" || cell.status === "running");
+  const refinementLeft = refinementPending.length;
+  // The user's own terms are refined first; what is left after them searches related terms
+  // RECON added, which only finds a few rare places (a VR arcade most runs missed, in tests).
+  const mainListReady = refinementLeft > 0 && refinementPending.every((cell) => cell.autoTerm);
+  // Places unrelated to the search (a shop, an office...) stay stored but are not listed.
+  const shownLeads = job.results.filter((lead) => lead.relevance !== "offTopic");
+  const leftOut = job.results.filter((lead) => lead.relevance === "offTopic");
+  const leftOutTitle = leftOut.length
+    ? `Unrelated to the search (shops, offices, services...), so not listed, exported or qualified. For example: ${leftOut
+        .slice(0, 12)
+        .map((lead) => `${lead.name} (${(lead.category ?? "").split(",")[0]})`)
+        .join(", ")}${leftOut.length > 12 ? "..." : "."}`
+    : "";
 
   return (
     <div className="space-y-6">
@@ -986,8 +422,45 @@ function JobProgress({ jobId, onBack }: { jobId: string; onBack: () => void }) {
           <div className="flex items-center gap-2 mt-1 flex-wrap">
             <StatusBadge status={job.status} />
             <span className="text-xs text-muted-foreground font-mono">
-              {job.completedCells}/{job.totalCells} cells · {job.totalLeads.toLocaleString()} leads found
+              {job.completedCells}/{job.totalCells} cells · {shownLeads.length.toLocaleString()} leads found
             </span>
+            {leftOut.length > 0 && (
+              <span className="text-[10px] font-mono text-muted-foreground/70 cursor-help" title={leftOutTitle}>
+                ({leftOut.length} unrelated places left out)
+              </span>
+            )}
+            {failedCells > 0 && (
+              <span
+                className="text-[10px] font-mono text-rose-400/80 bg-rose-500/8 border border-rose-500/20 px-1.5 py-0.5 rounded"
+                title="Google refused these cells even after a retry: rerun the search to cover them"
+              >
+                {failedCells} cell{failedCells > 1 ? "s" : ""} failed
+              </span>
+            )}
+            {mainListReady && job.status !== "done" && (
+              <span
+                className="text-[10px] font-mono text-emerald-400/80 bg-emerald-500/8 border border-emerald-500/20 px-1.5 py-0.5 rounded"
+                title="Your search terms have been searched everywhere, in detail: the list below is nearly complete (about 97% of the places in tests). The remaining cells search related terms for rare places most runs miss; they only add places."
+              >
+                main list ready · looking for rare places in {refinementLeft} cell{refinementLeft > 1 ? "s" : ""}
+              </span>
+            )}
+            {!mainListReady && refinementLeft > 0 && job.status !== "done" && (
+              <span
+                className="text-[10px] font-mono text-emerald-400/80 bg-emerald-500/8 border border-emerald-500/20 px-1.5 py-0.5 rounded"
+                title="Every area has been searched once: the list below is usable now. The busiest areas are being searched again in smaller pieces, which only adds places."
+              >
+                quick list ready · refining {refinementLeft} busy cell{refinementLeft > 1 ? "s" : ""}
+              </span>
+            )}
+            {splitSkippedCells > 0 && (
+              <span
+                className="text-[10px] font-mono text-amber-400/80 bg-amber-500/8 border border-amber-500/20 px-1.5 py-0.5 rounded"
+                title="These cells had a full list of places but the search reached its cell limit, so they were not searched in more detail: places may be missing there. Search those areas separately to cover them."
+              >
+                {splitSkippedCells} full cell{splitSkippedCells > 1 ? "s" : ""} not detailed
+              </span>
+            )}
             {hasDetailFields && (
               <span className="text-[10px] font-mono text-blue-400/70 bg-blue-500/8 border border-blue-500/20 px-1.5 py-0.5 rounded">
                 deep mode
@@ -996,12 +469,12 @@ function JobProgress({ jobId, onBack }: { jobId: string; onBack: () => void }) {
           </div>
         </div>
         <div className="flex gap-2 shrink-0">
-          {job.results.length > 0 && (
+          {shownLeads.length > 0 && (
             <Button
               variant="ghost"
               size="sm"
               className="text-muted-foreground hover:text-foreground"
-              onClick={() => exportToCsv(job)}
+              onClick={() => exportToCsv(job, shownLeads)}
             >
               <Download className="h-3.5 w-3.5 mr-1.5" /> CSV
             </Button>
@@ -1059,7 +532,7 @@ function JobProgress({ jobId, onBack }: { jobId: string; onBack: () => void }) {
       {job.status === "done" && (
         <div className="flex items-center gap-2 text-emerald-400 text-sm">
           <CheckCircle2 className="h-4 w-4" />
-          <span>Search complete — {job.totalLeads.toLocaleString()} businesses found</span>
+          <span>Search complete — {shownLeads.length.toLocaleString()} businesses found</span>
         </div>
       )}
 
@@ -1074,134 +547,54 @@ function JobProgress({ jobId, onBack }: { jobId: string; onBack: () => void }) {
       )}
 
       {/* Results table */}
-      {job.results.length > 0 && (() => {
-        const leadsWithWebsite = job.results.filter((l) => l.website);
-        const unenrichedCount = leadsWithWebsite.filter(
-          (l) => !l.enrichStatus || l.enrichStatus === "idle" || l.enrichStatus === "failed",
-        ).length;
-        const enrichingCount = job.results.filter((l) => l.enrichStatus === "running").length;
-        const completedCount = leadsWithWebsite.filter(
-          (l) => l.enrichStatus === "done" || l.enrichStatus === "failed",
-        ).length;
-        const totalEnrichable = leadsWithWebsite.length;
-        const showEnrichAll = unenrichedCount > 0 && enrichingCount === 0;
-        const showProgress = enrichingCount > 0;
-        const enrichedLeads = job.results.filter((l) => l.enrichStatus === "done" && l.enrichResult);
-        const qualifyCount = enrichedLeads.filter((l) => l.enrichResult?.verdict === "QUALIFY").length;
-        const borderlineCount = enrichedLeads.filter((l) => l.enrichResult?.verdict === "BORDERLINE").length;
-        const disqualifyCount = enrichedLeads.filter((l) => l.enrichResult?.verdict === "DISQUALIFY").length;
-        const hasEnriched = enrichedLeads.length > 0;
+      {shownLeads.length > 0 && (() => {
+        const withoutWebsite = shownLeads.filter((l) => !l.website).length;
+        const matchCount = shownLeads.filter((l) => l.relevance === "match").length;
 
         return (
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider font-mono">
-                Leads ({job.results.length.toLocaleString()})
+                Leads ({shownLeads.length.toLocaleString()})
               </h3>
               <div className="flex items-center gap-3 shrink-0">
-                {showProgress && (
-                  <span className="flex items-center gap-1.5 text-[11px] font-mono text-primary/80">
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                    Enriching {completedCount}/{totalEnrichable}
-                  </span>
-                )}
-                {showEnrichAll && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-7 px-3 text-[11px] border-primary/30 text-primary hover:bg-primary/10"
-                    onClick={() => enrichAllMut.mutate()}
-                    disabled={enrichAllMut.isPending}
-                  >
-                    {enrichAllMut.isPending ? (
-                      <Loader2 className="h-3 w-3 mr-1.5 animate-spin" />
-                    ) : (
-                      <Zap className="h-3 w-3 mr-1.5" />
-                    )}
-                    Enrich All ({unenrichedCount})
-                  </Button>
-                )}
-                {job.results.length > 0 && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-7 px-3 text-[11px] border-violet-500/30 text-violet-400 hover:bg-violet-500/10"
-                    onClick={() => qualifyAllMut.mutate()}
-                    disabled={qualifyAllMut.isPending || leadsWithWebsite.length === 0}
-                    title={
-                      leadsWithWebsite.length === 0
-                        ? hasDetailFields
-                          ? "Waiting for Deep Search to find website URLs"
-                          : "Start a new search with Website URL selected"
-                        : `Qualify ${leadsWithWebsite.length} lead(s) using their websites`
-                    }
-                  >
-                    {qualifyAllMut.isPending ? (
-                      <Loader2 className="h-3 w-3 mr-1.5 animate-spin" />
-                    ) : (
-                      <Target className="h-3 w-3 mr-1.5" />
-                    )}
-                    {leadsWithWebsite.length > 0
-                      ? `Qualify All (${leadsWithWebsite.length})`
-                      : hasDetailFields
-                      ? "Qualify All (waiting)"
-                      : "Qualify All (no websites)"}
-                  </Button>
-                )}
-                {!showEnrichAll && !showProgress && !job.results.some((l) => l.website) && (
-                  <span className="text-xs text-muted-foreground">
-                    {hasDetailFields
-                      ? "Deep Search is still looking for website URLs"
-                      : 'Website URL was not selected for this search'}
-                  </span>
-                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-3 text-[11px] border-violet-500/30 text-violet-400 hover:bg-violet-500/10"
+                  onClick={() => qualifyAllMut.mutate()}
+                  disabled={qualifyAllMut.isPending}
+                  title={[
+                    `Send all ${shownLeads.length} places to the Lead Qualifier (next step), the ${matchCount} matching your search first.`,
+                    withoutWebsite > 0
+                      ? `${withoutWebsite} have no website on Google Maps: they are scored from their name, category and Google Maps data.`
+                      : "",
+                    job.status === "running" ? "The search is still running: places found later are not included." : "",
+                  ].filter(Boolean).join(" ")}
+                >
+                  {qualifyAllMut.isPending ? (
+                    <Loader2 className="h-3 w-3 mr-1.5 animate-spin" />
+                  ) : (
+                    <Target className="h-3 w-3 mr-1.5" />
+                  )}
+                  Qualify All ({shownLeads.length})
+                </Button>
               </div>
             </div>
 
-            {/* ICP score filter chips — only visible once enrichment has run */}
-            {hasEnriched && (
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-[10px] font-mono text-muted-foreground/50 uppercase tracking-wider">ICP Filter:</span>
-                {(["all", "QUALIFY", "BORDERLINE", "DISQUALIFY"] as ScoreFilter[]).map((f) => {
-                  const label = f === "all" ? `All (${enrichedLeads.length})` : f === "QUALIFY" ? `✓ Qualify (${qualifyCount})` : f === "BORDERLINE" ? `~ Borderline (${borderlineCount})` : `✕ Disqualify (${disqualifyCount})`;
-                  const activeClass =
-                    f === "QUALIFY" ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-400" :
-                    f === "BORDERLINE" ? "bg-amber-500/15 border-amber-500/40 text-amber-400" :
-                    f === "DISQUALIFY" ? "bg-rose-500/15 border-rose-500/40 text-rose-400" :
-                    "bg-primary/15 border-primary/40 text-primary";
-                  return (
-                    <button
-                      key={f}
-                      onClick={() => setScoreFilter(f)}
-                      className={`px-2 py-0.5 rounded text-[10px] font-mono border transition-colors ${
-                        scoreFilter === f
-                          ? activeClass
-                          : "border-muted/30 text-muted-foreground hover:border-muted/60 hover:text-foreground"
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-
             <div className="max-h-[600px] overflow-auto rounded-lg border border-muted/25">
               <LeadsTable
-                leads={job.results}
+                leads={shownLeads}
                 selectedFields={selectedFields}
-                expandedLeadId={expandedLeadId}
-                onToggleExpand={(id) => setExpandedLeadId((prev) => (prev === id ? null : id))}
-                onEnrich={(l) => enrichMut.mutate(l)}
                 onSendToQualify={(l) => qualifyMut.mutate(l)}
-                scoreFilter={scoreFilter}
+                qualifyingId={qualifyMut.isPending ? qualifyMut.variables?.id ?? null : null}
               />
             </div>
           </div>
         );
       })()}
 
-      {job.status === "running" && job.results.length === 0 && (
+      {job.status === "running" && shownLeads.length === 0 && (
         <div className="flex items-center justify-center py-12 text-muted-foreground text-sm gap-2">
           <Loader2 className="h-4 w-4 animate-spin" />
           <span>Searching Google Maps...</span>
@@ -1211,6 +604,32 @@ function JobProgress({ jobId, onBack }: { jobId: string; onBack: () => void }) {
   );
 }
 
+const areaKey = (a: AreaInput) => a.osmId ?? a.label.trim().toLowerCase();
+
+/**
+ * Name sent to the search: the place and the first level above it ("Paris, Île-de-France",
+ * "11e Arrondissement, Paris"), so Google does not confuse it with a namesake (Paris, Texas).
+ * Countries keep their name alone.
+ */
+function suggestionLabel(s: AreaSuggestion): string {
+  if (s.label) return s.label;
+  const parent = s.context.split(", ")[0];
+  return s.type === "country" || !parent ? s.name : `${s.name}, ${parent}`;
+}
+
+/** For comparing names: "Saint-Étienne" → "saint etienne". */
+const plainName = (text: string) =>
+  text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+
+const AREA_TYPE_LABELS: Record<string, string> = {
+  country: "country",
+  state: "region",
+  county: "department / county",
+  city: "city",
+  district: "district",
+  locality: "locality",
+};
+
 export function MapsSearch() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -1219,8 +638,15 @@ export function MapsSearch() {
   const [searchTerms, setSearchTerms] = useState<string[]>([]);
   const [termInput, setTermInput] = useState("");
   const [label, setLabel] = useState("");
-  const [areas, setAreas] = useState<string[]>([]);
+  const [areas, setAreas] = useState<AreaInput[]>([]);
   const [areaInput, setAreaInput] = useState("");
+  const areaInputRef = useRef<HTMLInputElement>(null);
+  const [suggestions, setSuggestions] = useState<AreaSuggestion[]>([]);
+  const [highlighted, setHighlighted] = useState(-1);
+  /** OpenStreetMap is being asked for more areas (districts, small towns). */
+  const [moreLoading, setMoreLoading] = useState(false);
+  /** Grid size of each committed area (by areaKey), from its preview. */
+  const [areaCellCounts, setAreaCellCounts] = useState<Record<string, number>>({});
   const [drawnBbox, setDrawnBbox] = useState<import("@/lib/mapsApi").DrawnBbox | null>(null);
   const [selectedFields, setSelectedFields] = useState<Set<MapsField>>(
     new Set(["address", "phone", "website", "rating", "reviewCount", "category"]),
@@ -1253,11 +679,17 @@ export function MapsSearch() {
     }
   }, [activeIcp]);
 
+  const pendingAreas: AreaInput[] =
+    areaInput.trim() && !areas.some((a) => areaKey(a) === areaInput.trim().toLowerCase())
+      ? [...areas, { label: areaInput.trim() }]
+      : areas;
+
   const searchMut = useMutation({
     mutationFn: () =>
       mapsApi.search({
         searchTerms,
-        areas: areas.length > 0 ? areas : undefined,
+        // Text still in the input (not added with Enter) is searched as typed.
+        areas: pendingAreas.length > 0 ? pendingAreas : undefined,
         ...(drawnBbox ? { bbox: drawnBbox } : {}),
         selectedFields: Array.from(selectedFields),
         selectedCellIndices:
@@ -1301,50 +733,125 @@ export function MapsSearch() {
     }
   }
 
-  function addArea(raw: string) {
-    const trimmed = raw.trim();
-    if (!trimmed || areas.includes(trimmed)) return;
-    setAreas((prev) => [...prev, trimmed]);
+  function addArea(area: AreaInput) {
+    const label = area.label.trim();
+    if (!label) return;
+    const next = { label, osmId: area.osmId };
+    if (areas.some((a) => areaKey(a) === areaKey(next))) return;
+    setAreas((prev) => [...prev, next]);
     setAreaInput("");
+    setSuggestions([]);
+    setHighlighted(-1);
   }
 
-  function removeArea(a: string) {
-    setAreas((prev) => prev.filter((x) => x !== a));
+  function removeArea(a: AreaInput) {
+    setAreas((prev) => prev.filter((x) => areaKey(x) !== areaKey(a)));
+  }
+
+  function pickSuggestion(s: AreaSuggestion) {
+    addArea({ label: suggestionLabel(s), osmId: s.osmId });
   }
 
   function handleAreaKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter" || e.key === ",") {
+    if (e.key === "ArrowDown" && suggestions.length) {
       e.preventDefault();
-      addArea(areaInput);
+      setHighlighted((h) => (h + 1) % suggestions.length);
+    } else if (e.key === "ArrowUp" && suggestions.length) {
+      e.preventDefault();
+      setHighlighted((h) => (h <= 0 ? suggestions.length - 1 : h - 1));
+    } else if (e.key === "Escape") {
+      setSuggestions([]);
+      setHighlighted(-1);
+    } else if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault();
+      // A highlighted suggestion is the exact area; otherwise the text is searched as typed.
+      if (highlighted >= 0 && suggestions[highlighted]) pickSuggestion(suggestions[highlighted]);
+      else addArea({ label: areaInput });
     } else if (e.key === "Backspace" && !areaInput && areas.length > 0) {
       setAreas((prev) => prev.slice(0, -1));
     }
   }
 
-  // Auto-load grid preview for whatever's being typed (debounced).
+  // Suggestions for what's being typed: at each key, from RECON's area list (countries, regions,
+  // departments, towns). OpenStreetMap, slower, completes them when the list has little: a
+  // district ("Montmartre"), a small town.
+  useEffect(() => {
+    const q = areaInput.trim();
+    setMoreLoading(false);
+    if (!q) {
+      setSuggestions([]);
+      setHighlighted(-1);
+      return;
+    }
+    const ctrl = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    void (async () => {
+      let local: AreaSuggestion[] = [];
+      try {
+        local = (await mapsApi.suggestAreas(q, ctrl.signal)).suggestions;
+      } catch {
+        if (ctrl.signal.aborted) return;
+      }
+      setSuggestions(local);
+      setHighlighted(local.length ? 0 : -1);
+      const exact = local.some((s) => plainName(s.name) === plainName(q));
+      if (q.length < 4 || (local.length >= 3 && exact)) return;
+      // Only once typing pauses: each OpenStreetMap query takes seconds.
+      timer = setTimeout(async () => {
+        setMoreLoading(true);
+        try {
+          const more = (await mapsApi.suggestAreas(q, ctrl.signal, "osm")).suggestions;
+          const known = new Set(local.map((s) => `${plainName(s.name)}|${s.countryCode ?? ""}`));
+          const added = more.filter((s) => !known.has(`${plainName(s.name)}|${s.countryCode ?? ""}`));
+          // Not after the user left the box (the list would pop up again).
+          if (added.length && document.activeElement === areaInputRef.current) {
+            setSuggestions([...local, ...added].slice(0, 10));
+            if (!local.length) setHighlighted(0);
+          }
+        } catch {
+          // OpenStreetMap unreachable: the list stays as it is.
+        } finally {
+          if (!ctrl.signal.aborted) setMoreLoading(false);
+        }
+      }, 600);
+    })();
+    return () => {
+      clearTimeout(timer);
+      ctrl.abort();
+    };
+  }, [areaInput]);
+
+  // Grid preview of the last area added (the map shows where the search will run).
+  const lastArea = areas.at(-1);
   useEffect(() => {
     if (drawnBbox) return;
-    if (!areaInput.trim()) {
+    if (!lastArea) {
       setPreviewCells([]);
       setSelectedCellIndices(new Set());
       setPreviewLoading(false);
       return;
     }
+    let cancelled = false;
     setPreviewLoading(true);
-    const timer = setTimeout(async () => {
+    void (async () => {
       try {
-        const result = await mapsApi.previewGrid({ area: areaInput });
+        const result = await mapsApi.previewGrid({ area: lastArea.label, osmId: lastArea.osmId });
+        if (cancelled) return;
         setPreviewCells(result.cells);
         setSelectedCellIndices(new Set(result.cells.map((_, i) => i)));
+        setAreaCellCounts((prev) => ({ ...prev, [areaKey(lastArea)]: result.count }));
       } catch {
+        if (cancelled) return;
         setPreviewCells([]);
         setSelectedCellIndices(new Set());
       } finally {
-        setPreviewLoading(false);
+        if (!cancelled) setPreviewLoading(false);
       }
-    }, 600);
-    return () => clearTimeout(timer);
-  }, [areaInput, drawnBbox]);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [lastArea?.label, lastArea?.osmId, drawnBbox]);
 
   // When the user finishes drawing a rectangle on the map
   async function handleDrawComplete(bbox: import("@/lib/mapsApi").DrawnBbox) {
@@ -1379,14 +886,19 @@ export function MapsSearch() {
   }
 
   const hasDetailFields = [...selectedFields].some((f) => DETAIL_FIELDS.includes(f));
-  const isWorldwide = areas.some((a) => a.toLowerCase() === "worldwide" || a.toLowerCase() === "world") ||
+  const isWorldwide = areas.some((a) => a.label.toLowerCase() === "worldwide" || a.label.toLowerCase() === "world") ||
     areaInput.toLowerCase() === "worldwide" || areaInput.toLowerCase() === "world";
   const totalJobs = 1;
-  const MAX_CELLS = 300;
-  // Estimate cell count: use actual preview cells if available (single area), otherwise ~16 cells/area
-  const cellsPerArea = previewCells.length > 0 && areas.length <= 1 ? previewCells.length : 16;
-  const estimatedCells = (areas.length + (drawnBbox ? 1 : 0)) * cellsPerArea * Math.max(searchTerms.length, 1);
+  // Same limit as the server (MAX_JOB_CELLS in api-server/src/routes/maps.ts).
+  const MAX_CELLS = 2000;
+  // Cells before the search splits full ones. Each area's own grid when previewed (~16 otherwise).
+  // Abroad, each term is also searched in the local language, so the real count can be ~2x.
+  const baseCells =
+    areas.reduce((sum, a) => sum + (areaCellCounts[areaKey(a)] ?? 16), 0) + (drawnBbox ? previewCells.length || 16 : 0);
+  const estimatedCells = baseCells * Math.max(searchTerms.length, 1);
   const overCellLimit = estimatedCells > MAX_CELLS;
+  /** Regions and countries: many cells, and busy cells are cut into smaller ones while searching. */
+  const largeSearch = estimatedCells > 300 || baseCells > 60;
 
   if (activeJobId) {
     return (
@@ -1451,10 +963,14 @@ export function MapsSearch() {
               {/* Text area pills */}
               {areas.map((a) => (
                 <span
-                  key={a}
+                  key={areaKey(a)}
+                  title={a.osmId ? "Exact area from OpenStreetMap" : "Searched as typed"}
                   className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-primary/15 border border-primary/30 text-primary text-xs font-mono"
                 >
-                  {a}
+                  {a.label}
+                  {areaCellCounts[areaKey(a)] != null && (
+                    <span className="text-primary/50">· {areaCellCounts[areaKey(a)]} cells</span>
+                  )}
                   <button
                     type="button"
                     onClick={(e) => { e.stopPropagation(); removeArea(a); }}
@@ -1467,19 +983,49 @@ export function MapsSearch() {
                 value={areaInput}
                 onChange={(e) => { setAreaInput(e.target.value); if (drawnBbox) handleClearDraw(); }}
                 onKeyDown={handleAreaKeyDown}
-                onBlur={() => addArea(areaInput)}
+                ref={areaInputRef}
+                onBlur={() => { setSuggestions([]); setHighlighted(-1); setMoreLoading(false); }}
                 placeholder={
                   areas.length === 0 && !drawnBbox
-                    ? 'City, neighborhood, state, country, continent…'
+                    ? 'Country, region, department, city, district…'
                     : 'Add another area…'
                 }
                 className="flex-1 min-w-[180px] bg-transparent text-sm placeholder:text-muted-foreground/40 focus:outline-none"
               />
             </div>
+            {/* Suggestions (OpenStreetMap): the exact area, outline included */}
+            {(suggestions.length > 0 || moreLoading) && (
+              <div className="relative">
+                <ul className="absolute z-50 left-0 right-0 mt-1 max-h-72 overflow-auto rounded-md border border-muted/40 bg-background shadow-lg">
+                  {suggestions.map((s, i) => (
+                    <li
+                      key={s.osmId}
+                      // mousedown, not click: picking must happen before the input loses focus.
+                      onMouseDown={(e) => { e.preventDefault(); pickSuggestion(s); }}
+                      onMouseEnter={() => setHighlighted(i)}
+                      className={`px-3 py-1.5 cursor-pointer text-sm flex items-baseline gap-2 ${i === highlighted ? "bg-primary/15" : ""}`}
+                    >
+                      <span className="font-medium">{s.name}</span>
+                      <span className="text-[10px] font-mono uppercase text-primary/60">{s.typeLabel ?? AREA_TYPE_LABELS[s.type] ?? s.type}</span>
+                      {s.context && <span className="text-xs text-muted-foreground truncate">{s.context}</span>}
+                    </li>
+                  ))}
+                  <li className="px-3 py-1 text-[10px] text-muted-foreground/50 border-t border-muted/20 flex items-center gap-2">
+                    <span>Enter picks the highlighted area · Esc then Enter searches the text as typed</span>
+                    {moreLoading && (
+                      <span className="inline-flex items-center gap-1 text-primary/60">
+                        <Loader2 className="h-2.5 w-2.5 animate-spin" /> more places…
+                      </span>
+                    )}
+                    <span className="ml-auto">GeoNames · OpenStreetMap</span>
+                  </li>
+                </ul>
+              </div>
+            )}
             <p className="text-[10px] font-mono text-muted-foreground/40">
               {drawnBbox
                 ? `Drawn: ${drawnBbox.minLat.toFixed(2)}°,${drawnBbox.minLng.toFixed(2)}° → ${drawnBbox.maxLat.toFixed(2)}°,${drawnBbox.maxLng.toFixed(2)}°`
-                : 'e.g. "Adelaide" · "Melbourne" · "Texas" · "France"'}
+                : 'e.g. "Japan" · "Île-de-France" · "Paris 11e" · "Texas": pick a suggestion to search its exact outline'}
             </p>
           </div>
         </CardContent>
@@ -1636,13 +1182,24 @@ export function MapsSearch() {
               ) : null
             )}
 
+            {largeSearch && !overCellLimit && (
+              <div className="flex items-start gap-2 text-amber-400 text-xs bg-amber-500/10 border border-amber-500/30 rounded-md p-3">
+                <span>
+                  <strong>Large area.</strong> Google lists at most ~120 places per search, so every busy
+                  cell is cut into smaller cells during the search until each list is complete: the cell
+                  count grows as it runs. A whole country can take <strong>several hours</strong>. Leads
+                  appear as they are found, and the search can be paused and resumed at any time.
+                </span>
+              </div>
+            )}
+
             <Button
               className="w-full"
               onClick={() => searchMut.mutate()}
               disabled={
                 searchMut.isPending ||
                 searchTerms.length === 0 ||
-                (areas.length === 0 && !drawnBbox) ||
+                (pendingAreas.length === 0 && !drawnBbox) ||
                 overCellLimit
               }
             >
@@ -1777,7 +1334,7 @@ export function MapsSearch() {
                       ? job.config.location
                       : "Worldwide"}
                     {" · "}
-                    {job.totalLeads.toLocaleString()} leads
+                    {(job.shownLeads ?? job.totalLeads).toLocaleString()} leads
                     {" · "}
                     {job.completedCells}/{job.totalCells} cells
                   </p>

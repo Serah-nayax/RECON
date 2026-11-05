@@ -1,14 +1,15 @@
 import { Router, type IRouter } from "express";
 import { apiKeyMiddleware } from "../lib/apiKeyMiddleware.js";
-import { createBatch, getBatch, listBatches, cancelBatch } from "../lib/qualifyStore.js";
-import { runQualifyBatch } from "../lib/qualifyRunner.js";
+import { createBatch, getBatch, listBatches, cancelBatch } from "../lib/qualify/qualifyStore.js";
+import { runQualifyBatch } from "../lib/qualify/qualifyRunner.js";
 import { getIcp } from "../lib/icpStore.js";
 import { logger } from "../lib/logger.js";
-import type { LeadInput } from "../lib/qualifyStore.js";
-import { canonicalizeLeadUrl } from "../lib/leadIdentity.js";
+import type { LeadInput } from "../lib/qualify/qualifyStore.js";
+import { canonicalizeLeadUrl } from "../lib/qualify/leadIdentity.js";
 
 const router: IRouter = Router();
-const MAX_BATCH_SIZE = 100;
+// Leads are processed one by one and stored in the DB, so the cap only guards request size (body limit is 10mb).
+const MAX_BATCH_SIZE = 5000;
 
 router.use(apiKeyMiddleware);
 
@@ -36,14 +37,17 @@ router.post("/qualify", (req, res) => {
       res.status(400).json({ error: "Each lead must have a name string" });
       return;
     }
-    if (!l.url || typeof l.url !== "string") {
-      res.status(400).json({ error: "Each lead must have a url string" });
+    if (l.url != null && typeof l.url !== "string") {
+      res.status(400).json({ error: "A lead's url must be a string" });
       return;
     }
-    const url = String(l.url).trim();
-    const normalizedUrl = canonicalizeLeadUrl(url);
-    if (seenUrls.has(normalizedUrl)) continue;
-    seenUrls.add(normalizedUrl);
+    // A place with no website (many on Google Maps) is still qualified, from its name and category.
+    const url = String(l.url ?? "").trim();
+    const identity = url
+      ? canonicalizeLeadUrl(url)
+      : `name:${String(l.name).trim().toLowerCase()}|${String(l.city ?? "").trim().toLowerCase()}`;
+    if (seenUrls.has(identity)) continue;
+    seenUrls.add(identity);
     leads.push({
       name: String(l.name).trim(),
       url,

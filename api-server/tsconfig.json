@@ -1,6 +1,7 @@
 {
-  "extends": "../../tsconfig.base.json",
+  "extends": "../tsconfig.base.json",
   "compilerOptions": {
+    "lib": ["es2022", "dom"],
     "incremental": true,
     "tsBuildInfoFile": ".tsbuildinfo",
     "outDir": "dist",
@@ -10,16 +11,10 @@
   "include": ["src"],
   "references": [
     {
-      "path": "../../lib/db"
+      "path": "../lib/db"
     },
     {
-      "path": "../../lib/api-zod"
-    },
-    {
-      "path": "../../lib/integrations-anthropic-ai"
-    },
-    {
-      "path": "../../lib/integrations-gemini-ai"
+      "path": "../lib/integrations-gemini-ai"
     }
   ]
 }

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { HelpCircle, Map, Target, History, Settings, BookOpen, ArrowRight, Layers, FileSpreadsheet, Brain, Users } from "lucide-react";
+import { HelpCircle, Map, Target, History, Settings, BookOpen, ArrowRight, Layers, FileSpreadsheet, Brain } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -20,7 +20,7 @@ const steps = [
     color: "text-violet-400",
     bg: "bg-violet-400/10",
     description:
-      "Define who your ideal customer is. Set the signals that qualify or disqualify a lead and tune the AI scoring prompt. Activate one ICP to use across all searches.",
+      "Define who your ideal customer is. Set the signals that qualify or disqualify a lead. The active ICP is used to score every lead.",
   },
   {
     step: 2,
@@ -31,7 +31,7 @@ const steps = [
     color: "text-emerald-400",
     bg: "bg-emerald-400/10",
     description:
-      "Search Google Maps for any business type in any city or region. Recon extracts name, rating, reviews, phone, and website — then lets you enrich each lead with full AI intel.",
+      "Search Google Maps for any business type in any city or region. Recon collects name, category, rating, reviews, phone and website, lists places matching your search first and hides clearly unrelated ones.",
   },
   {
     step: 3,
@@ -53,7 +53,7 @@ const steps = [
     color: "text-amber-400",
     bg: "bg-amber-400/10",
     description:
-      "Expand any lead to read the AI summary, review signals, see decision-maker contacts, and check competitor intel. Export qualified leads to HubSpot, Salesforce, or a spreadsheet.",
+      "Expand any lead to see its score, verdict and the signals found. Export qualified leads to HubSpot, Salesforce or a spreadsheet.",
   },
 ];
 
@@ -63,7 +63,7 @@ const pages = [
     label: "Maps Search",
     color: "text-emerald-400",
     bg: "bg-emerald-400/10",
-    description: "Discover businesses by type and location. Enrich results with AI-powered intel and pipe them directly into the Lead Qualifier.",
+    description: "Discover businesses by type and location, then send them to the Lead Qualifier (one by one or all at once).",
   },
   {
     icon: Target,
@@ -77,21 +77,21 @@ const pages = [
     label: "History",
     color: "text-orange-400",
     bg: "bg-orange-400/10",
-    description: "Browse past crawls and qualification batches. Revisit reports and re-export at any time.",
+    description: "Browse past qualification batches and re-export them at any time.",
   },
   {
     icon: BookOpen,
     label: "ICP Library",
     color: "text-violet-400",
     bg: "bg-violet-400/10",
-    description: "Create and manage Ideal Customer Profiles. Each profile controls the scoring logic and AI prompt used when qualifying leads.",
+    description: "Create and manage Ideal Customer Profiles. Each profile sets the signals used to score leads.",
   },
   {
     icon: Settings,
     label: "Settings",
     color: "text-zinc-400",
     bg: "bg-zinc-400/10",
-    description: "Store your API keys for the crawler, AI providers (Anthropic, OpenAI, Gemini), Apify, Seamless.AI contact lookups, and CRM integrations.",
+    description: "The access key for a shared RECON server, and your HubSpot / Salesforce accounts.",
   },
 ];
 
@@ -144,7 +144,7 @@ export function HelpModal() {
         {tab === "workflow" && (
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground mb-4">
-              Follow these steps to go from zero to a list of qualified, enriched leads ready for outreach.
+              Follow these steps to go from zero to a list of qualified leads ready for outreach.
             </p>
             {steps.map((s, i) => {
               const Icon = s.icon;
@@ -178,9 +178,9 @@ export function HelpModal() {
               <div className="flex items-start gap-3">
                 <Brain className="h-4 w-4 text-primary mt-0.5 shrink-0" />
                 <div>
-                  <p className="text-sm font-semibold text-primary mb-1">Tip: enrich before qualifying</p>
+                  <p className="text-sm font-semibold text-primary mb-1">Tip: places without a website are qualified too</p>
                   <p className="text-sm text-muted-foreground">
-                    Maps Search enrichment gives Recon more data to score against. Leads with a website URL score more accurately than those without.
+                    They are scored from their name, category and Google Maps data. Leads with a website score more accurately, since Recon can read their pages.
                   </p>
                 </div>
               </div>
@@ -207,20 +207,6 @@ export function HelpModal() {
                 </div>
               );
             })}
-
-            <div className="rounded-lg border border-border/50 p-3 mt-2">
-              <div className="flex gap-3">
-                <div className="w-9 h-9 rounded-md flex items-center justify-center shrink-0 bg-rose-400/10">
-                  <Users className="h-4 w-4 text-rose-400" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold mb-0.5">Contact Intel</p>
-                  <p className="text-sm text-muted-foreground leading-relaxed">
-                    Available inside enriched leads in both Maps Search and Lead Qualifier. Requires a Seamless.AI key in Settings to look up decision-maker contacts.
-                  </p>
-                </div>
-              </div>
-            </div>
           </div>
         )}
       </DialogContent>

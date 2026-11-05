@@ -65,7 +65,11 @@ async function pushToHubspot(leads: LeadPayload[]): Promise<{ pushed: number; er
         },
         body: JSON.stringify({
           filterGroups: [{
-            filters: [{ propertyName: "website", operator: "EQ", value: lead.url ?? "" }],
+            // A place without a website (from Google Maps) is matched by name instead: an empty
+            // website would match an unrelated company and overwrite it.
+            filters: [lead.url
+              ? { propertyName: "website", operator: "EQ", value: lead.url }
+              : { propertyName: "name", operator: "EQ", value: lead.name }],
           }],
           properties: ["company", "website"],
           limit: 1,
@@ -184,7 +188,7 @@ async function pushToSalesforce(leads: LeadPayload[]): Promise<{ pushed: number;
 
       // Upsert by Website URL using the composite API
       const upsertRes = await fetch(
-        `${instanceUrl}/services/data/v59.0/sobjects/Account/Website/${encodeURIComponent(lead.url ?? lead.name)}`,
+        `${instanceUrl}/services/data/v59.0/sobjects/Account/Website/${encodeURIComponent(lead.url || lead.name)}`,
         {
           method: "PATCH",
           headers: {
