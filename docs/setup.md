@@ -68,7 +68,8 @@ The defaults were measured on real searches. Change them only when you investiga
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `MAPS_CONCURRENCY` | 4 | Browser pages searching cells at once |
+| `MAPS_CONCURRENCY` | 8 on a machine with 8+ threads and 12+ GB RAM, else 4 | Browser pages searching cells at once (one search runs at a time; others wait their turn) |
+| `MAPS_BLOCK_TILES` | on | Skip downloading the map image (RECON reads only the results list). `0` loads it |
 | `MAPS_PROBE_CONCURRENCY` | 5 | Terms probed at once to learn Google's categories. Lower it if Google blocks |
 | `MAPS_PROBE_TIMEOUT_MS` | 120000 | Longest a probe may take before the search goes on without it |
 | `MAPS_DEFER_SPLITS` | on | Search every cell once before cutting full cells. `0` cuts as it goes |

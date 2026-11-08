@@ -29,8 +29,13 @@ const BLOCKED_CATEGORY =
 const splitCategories = (category?: string | null) =>
   (category ?? "").split(",").map((c) => c.trim().toLowerCase()).filter(Boolean);
 
-/** Words too generic to tie a category to a search ("club" would keep every sports club). */
-const GENERIC_WORDS = new Set(["club", "centre", "center", "track", "venue", "service", "store", "school", "event"]);
+/**
+ * Words too generic to tie a category to a search ("club" would keep every sports club; "park" from
+ * "trampoline park" matched every city park and parking lot; "family" matched "Family law attorney").
+ */
+const GENERIC_WORDS = new Set([
+  "club", "centre", "center", "track", "venue", "service", "store", "school", "event", "park", "family",
+]);
 
 /** Words of the searched terms that identify the kind of place ("laser tag" → "laser", "tag"). */
 const termWords = (searchTerms: string[]) => [

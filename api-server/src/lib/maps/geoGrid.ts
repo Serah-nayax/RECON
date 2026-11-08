@@ -167,7 +167,7 @@ export const SUPPORTED_CONTINENTS = Object.keys(CONTINENT_BOXES);
 
 // ── Grid generation helpers ───────────────────────────────────────────────────
 
-function zoomForCell(degreesPerCell: number): number {
+export function zoomForCell(degreesPerCell: number): number {
   return degreesPerCell >= 10 ? 8 :
     degreesPerCell >= 5  ? 9 :
     degreesPerCell >= 2  ? 10 :

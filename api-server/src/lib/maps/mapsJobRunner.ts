@@ -10,6 +10,7 @@ import {
 import { MemoryStorage } from "@crawlee/memory-storage";
 import { chromium } from "playwright";
 import { lookup } from "dns/promises";
+import { availableParallelism, totalmem } from "os";
 import {
   getMapsJob,
   listMapsJobs,
@@ -26,6 +27,7 @@ import {
   type MapsJobConfig,
 } from "./mapsStore.js";
 import type { BoundingBox, GridCell } from "./geoGrid.js";
+import { zoomForCell } from "./geoGrid.js";
 import { resolveArea, isInArea, rectTouchesArea, type ResolvedArea } from "./areas.js";
 import {
   scrapeGoogleMapsCell,
@@ -47,6 +49,23 @@ import { allowSleep, keepAwake } from "./keepAwake.js";
 import { isOffTopicPlace, learnExpansions, TOP_RESULTS } from "./searchProfile.js";
 
 const NETWORK_POLL_MS = 10_000;
+/**
+ * Browser pages searching cells at once (one job runs at a time, see startMapsJob). With map
+ * tiles blocked, 8 pages took Lyon arcade from 7.3 to 5.3 min (with the parallel probes) and
+ * Japan laser tag kept every venue; measured on 14 threads / 15 GB. Smaller machines keep 4:
+ * at 8 the CPU saturated (Lyon: 9.5 min) and a 4 GB server runs short of memory.
+ * MAPS_CONCURRENCY sets it by hand.
+ */
+const MAPS_CONCURRENCY = (() => {
+  const forced = Number(process.env.MAPS_CONCURRENCY);
+  if (forced > 0) return forced;
+  const threads = availableParallelism();
+  const memoryGb = totalmem() / 1024 ** 3;
+  return threads >= 8 && memoryGb >= 12 ? 8 : 4;
+})();
+logger.info({ pages: MAPS_CONCURRENCY, threads: availableParallelism(), memoryGb: Math.round(totalmem() / 1024 ** 3) }, "Maps: browser pages per search");
+/** Skip the map tiles of each cell page (the list is all RECON reads). MAPS_BLOCK_TILES=0 loads them. */
+const BLOCK_MAP_TILES = process.env.MAPS_BLOCK_TILES !== "0";
 const NETWORK_PAUSE_MESSAGE = "Internet connection lost: the search resumes automatically when it is back.";
 
 /** A local DNS lookup (no request to Google): false when this machine is offline or asleep. */
@@ -210,6 +229,18 @@ async function learnJobExpansions(
     const dist = (c: GridCell) => (c.lat - lat) ** 2 + (c.lng - lng) ** 2;
     return own.reduce((best, c) => (dist(c) < dist(best) ? c : best));
   };
+  // The whole area in one view: Google then ranks the best matches from all of it. Used when the
+  // middle cell is too quiet (Japan, laser tag: the middle of the country listed 5 places, the
+  // job fell back on another job's terms and missed Round 1, Taito, namco: 34 venues).
+  const wholeAreaCell = (term: string): GridCell => {
+    const own = userCells.filter((c) => termOf(c) === term);
+    const middle = middleCell(term);
+    const half = middle.halfDeg ?? 0;
+    const minLat = Math.min(...own.map((c) => c.lat)) - half, maxLat = Math.max(...own.map((c) => c.lat)) + half;
+    const minLng = Math.min(...own.map((c) => c.lng)) - half, maxLng = Math.max(...own.map((c) => c.lng)) + half;
+    const span = Math.max(maxLat - minLat, maxLng - minLng);
+    return { ...middle, lat: (minLat + maxLat) / 2, lng: (minLng + maxLng) / 2, halfDeg: span / 2, zoom: zoomForCell(span) };
+  };
 
   const launch = buildCrawleeLaunchContext();
   const proxy = launch.proxyUrl ? new URL(launch.proxyUrl) : null;
@@ -240,13 +271,22 @@ async function learnJobExpansions(
           // A probe that hangs must not hold up the whole job: after the limit it is dropped and
           // the term keeps its own words (the fallback profile below).
           const probeSignal = AbortSignal.any([signal, AbortSignal.timeout(PROBE_TIMEOUT_MS)]);
-          const places = await scrapeGoogleMapsCell(
-            term, config.scope, config.location, middleCell(term), ["category"], page, probeSignal,
-            undefined, false, TOP_RESULTS,
-          ).catch((err) => {
-            logger.warn({ jobId, term, err: err instanceof Error ? err.message : String(err) }, "Search profile probe failed");
-            return [] as MapsLead[];
-          });
+          const probe = (cell: GridCell) =>
+            scrapeGoogleMapsCell(
+              term, config.scope, config.location, cell, ["category"], page, probeSignal,
+              undefined, false, TOP_RESULTS,
+            ).catch((err) => {
+              logger.warn({ jobId, term, err: err instanceof Error ? err.message : String(err) }, "Search profile probe failed");
+              return [] as MapsLead[];
+            });
+          let places = await probe(middleCell(term));
+          // A short list: the middle of the area is quiet (or Google cut it). The whole area is
+          // read too and the longer list is kept; city middles fill their 20 and skip this.
+          if (places.length < TOP_RESULTS && userCells.filter((c) => termOf(c) === term).length > 1 && !probeSignal.aborted) {
+            const wide = await probe(wholeAreaCell(term));
+            logger.info({ jobId, term, middlePlaces: places.length, wholeAreaPlaces: wide.length }, "Search profile: middle cell was short, read the whole area");
+            if (wide.length > places.length) places = wide;
+          }
           probes.push({ term, places });
         }
         await page.close().catch(() => {});
@@ -466,6 +506,8 @@ function splitSaturatedCell(
 /** Restarts after a Crawlee crash, per job; reset whenever a restart finishes more cells. */
 const crashRestarts = new Map<string, { doneCells: number; attempts: number }>();
 const MAX_CRASH_RESTARTS = 3;
+/** Jobs whose next run must not probe again: their expansion cells already exist. */
+const expansionsAlreadyLearned = new Set<string>();
 
 function cellsFinished(jobId: string): number {
   return getMapsJob(jobId)?.cells.filter((c) => c.status !== "pending" && c.status !== "running").length ?? 0;
@@ -483,11 +525,10 @@ async function runMapsJob(jobId: string): Promise<void> {
   // soon as they fill up again, and the expansion terms were already added by the quick pass.
   const refining = cells.some((c) => c.refinement);
   // Each term's dominant Google categories are searched too (searchProfile.ts). A resumed job
-  // learns again but keeps the expansion cells it already has.
-  if (!refining) {
-    const expansions = await learnJobExpansions(jobId, config, cells, signal);
-    if (expansions.length) addExpansionCells(jobId, cells, expansions);
-  }
+  // learns again but keeps the expansion cells it already has. The probes run while the user's
+  // own cells are searched (they used to hold up the whole job ~1 min before the first cell);
+  // their cells join the queue when the probes end (see expansionCellsReady below).
+  const learnNow = !refining && !expansionsAlreadyLearned.delete(jobId);
   const keepCategory = config.selectedFields.includes("category");
   const scrapeFields: MapsField[] = config.selectedFields;
   const withoutHiddenFields = (leads: MapsLead[]) =>
@@ -582,9 +623,15 @@ async function runMapsJob(jobId: string): Promise<void> {
     } satisfies MapsRequestData,
   });
 
+  // Cell chains (see PARALLEL_CELLS) that found the queue empty: revived when the expansion
+  // cells arrive.
+  let idleChains = 0;
   const takeNextCellRequest = () => {
-    const cellIndex = pendingCellIndexes[nextCellCursor++];
-    return cellIndex == null ? null : cellRequest(cellIndex);
+    if (nextCellCursor >= pendingCellIndexes.length) {
+      idleChains++;
+      return null;
+    }
+    return cellRequest(pendingCellIndexes[nextCellCursor++]);
   };
 
   // Cells already given their one retry (see failedRequestHandler).
@@ -593,14 +640,12 @@ async function runMapsJob(jobId: string): Promise<void> {
   crawler = new PlaywrightCrawler(
     {
       launchContext: buildCrawleeLaunchContext(),
-      // Detail pages dominate job time (~2s each). 3 parallel pages is ~1.5x faster than 2
-      // without tripping Google's bot checks in local testing; 4 is a moderate step up
-      // (one shared office IP); tune with MAPS_CONCURRENCY.
+      // Pages at once: see MAPS_CONCURRENCY.
       // Pinned: Crawlee's autoscaler read short event-loop stalls (parsing big search
       // answers) as overload and dropped to 1 page, ~40% slower runs (2.6 of 4 on average).
-      maxConcurrency: Number(process.env.MAPS_CONCURRENCY ?? 4),
-      minConcurrency: Number(process.env.MAPS_CONCURRENCY ?? 4),
-      autoscaledPoolOptions: { desiredConcurrency: Number(process.env.MAPS_CONCURRENCY ?? 4) },
+      maxConcurrency: MAPS_CONCURRENCY,
+      minConcurrency: MAPS_CONCURRENCY,
+      autoscaledPoolOptions: { desiredConcurrency: MAPS_CONCURRENCY },
       maxRequestRetries: 2,
       maxSessionRotations: 3,
       retryOnBlocked: true,
@@ -618,7 +663,7 @@ async function runMapsJob(jobId: string): Promise<void> {
       },
       browserPoolOptions: {
         useFingerprints: true,
-        maxOpenPagesPerBrowser: Number(process.env.MAPS_CONCURRENCY ?? 4),
+        maxOpenPagesPerBrowser: MAPS_CONCURRENCY,
         retireBrowserAfterPageCount: 12,
       },
       preNavigationHooks: [
@@ -644,7 +689,10 @@ async function runMapsJob(jobId: string): Promise<void> {
             const isTelemetry =
               /\/(gen_204|log|csi)\b/.test(reqUrl) ||
               /google-analytics\.com|googletagmanager\.com|doubleclick\.net/.test(reqUrl);
-            if (["image", "font", "media"].includes(resourceType) || isTelemetry) {
+            // Map tiles (~210 requests per cell): RECON reads the results list, never the map, and
+            // drawing the map without a GPU is what saturates the CPU (8 pages: each cell 2x slower).
+            const isMapTile = BLOCK_MAP_TILES && /^https:\/\/www\.google\.com\/maps\/vt\b/.test(reqUrl);
+            if (["image", "font", "media"].includes(resourceType) || isTelemetry || isMapTile) {
               await route.abort();
             } else {
               await route.continue();
@@ -873,11 +921,33 @@ async function runMapsJob(jobId: string): Promise<void> {
   };
   signal.addEventListener("abort", abortCrawler, { once: true });
 
+  // Scan cells PARALLEL_CELLS at a time; each finished cell queues the next one.
+  // Most leads now come complete from the search itself, so pages go to cells, not details.
+  const PARALLEL_CELLS = MAPS_CONCURRENCY;
+  let crawlerFinished = false;
+  const expansionCellsReady: Promise<void> = learnNow
+    ? learnJobExpansions(jobId, config, cells, signal)
+        .then(async (expansions) => {
+          if (!expansions.length || signal.aborted) return;
+          const before = cells.length;
+          addExpansionCells(jobId, cells, expansions);
+          for (let index = before; index < cells.length; index++) pendingCellIndexes.push(index);
+          if (crawlerFinished) return; // the run below picks them up
+          const revived = [];
+          for (; idleChains > 0 && revived.length < PARALLEL_CELLS; idleChains--) {
+            const next = takeNextCellRequest();
+            if (!next) break;
+            revived.push(next);
+          }
+          if (revived.length) await crawler.addRequests(revived, { forefront: true });
+        })
+        .catch((err) => {
+          logger.warn({ jobId, err: err instanceof Error ? err.message : String(err) }, "Search expansions not queued");
+        })
+    : Promise.resolve();
+
   let crashMessage: string | null = null;
   try {
-    // Scan cells PARALLEL_CELLS at a time; each finished cell queues the next one.
-    // Most leads now come complete from the search itself, so pages go to cells, not details.
-    const PARALLEL_CELLS = Number(process.env.MAPS_CONCURRENCY ?? 4);
     const initialRequests = [];
     for (let n = 0; n < PARALLEL_CELLS; n++) {
       const cell = takeNextCellRequest();
@@ -898,8 +968,19 @@ async function runMapsJob(jobId: string): Promise<void> {
     crashMessage = err instanceof Error ? err.message : String(err);
     logger.error({ jobId, err: crashMessage }, "Maps Crawlee run crashed");
   } finally {
+    crawlerFinished = true;
+    // The quick pass is not over until the expansion cells exist.
+    await expansionCellsReady;
     signal.removeEventListener("abort", abortCrawler);
     clearAbortSignal(jobId);
+  }
+
+  // The run ended before the probes did (small jobs), or the cells they queued came too late
+  // for it: search them in a new run, without probing again.
+  if (!crashMessage && !signal.aborted && learnNow &&
+      cells.some((c) => c.autoTerm && (c.status === "pending" || c.status === "running"))) {
+    expansionsAlreadyLearned.add(jobId);
+    return runMapsJob(jobId);
   }
 
   // Crawlee can stop a whole run on an internal error (seen: "Promise handler has been canceled
