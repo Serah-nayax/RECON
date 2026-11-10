@@ -241,7 +241,6 @@ export function MapGridPicker({
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             maxZoom={19}
-            className="map-tiles-dark"
           />
 
           {/* Fit bounds to cells or drawn bbox */}

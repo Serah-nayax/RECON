@@ -995,14 +995,14 @@ export function MapsSearch() {
         icon={Map}
         step={2}
         title="Maps Search"
-        description="Say what to look for and where: RECON lists every place of that kind found on Google Maps."
+        description="Every place of a kind in an area, from Google Maps."
       />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,440px)_minmax(0,1fr)] items-start">
         {/* ── Form: what, where, start ── */}
         <Card className="lg:sticky lg:top-24">
           <CardContent className="p-6 space-y-7">
-            <FormStep n={1} title="What to look for" hint="Kinds of places, as you would type them in Google Maps.">
+            <FormStep n={1} title="What to look for">
               
 
               {/* Pills + input */}
@@ -1031,7 +1031,7 @@ export function MapsSearch() {
                   onChange={(e) => setTermInput(e.target.value)}
                   onKeyDown={handleTermKeyDown}
                   onBlur={() => addTerm(termInput)}
-                  placeholder={searchTerms.length === 0 ? "e.g. dental clinic, bowling alley…" : "Add another…"}
+                  placeholder={searchTerms.length === 0 ? "e.g. arcade, bowling alley" : "Add another…"}
                   className="flex-1 min-w-[140px] bg-transparent text-sm placeholder:text-muted-foreground/70 focus:outline-none"
                 />
               </div>
@@ -1039,7 +1039,7 @@ export function MapsSearch() {
               {/* ICP suggestions */}
               {activeIcp && extractIcpSearchTerms(activeIcp).length > 0 && (
                 <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-                  <span className="text-xs text-muted-foreground">Suggested by the active ICP:</span>
+                  <span className="text-xs text-muted-foreground">Suggestions:</span>
                   {extractIcpSearchTerms(activeIcp).map((term) => (
                     <button
                       key={term}
@@ -1059,15 +1059,8 @@ export function MapsSearch() {
               )}
             </FormStep>
 
-            <FormStep n={2} title="Where" hint="A city, region or country. Pick a suggestion for its exact outline, or draw on the map.">
+            <FormStep n={2} title="Where">
           <div className="space-y-1.5">
-            <p className="text-xs text-muted-foreground flex items-center gap-1.5 min-h-4">
-              Press Enter or comma to add several.
-              {previewLoading && <Loader2 className="h-3 w-3 animate-spin text-primary" />}
-              {!previewLoading && previewCells.length > 0 && (
-                <span className="text-primary">{previewCells.length} cells on the map</span>
-              )}
-            </p>
 
             {/* Pills + input */}
             <div
@@ -1112,7 +1105,7 @@ export function MapsSearch() {
                 onBlur={() => { setSuggestions([]); setHighlighted(-1); setMoreLoading(false); }}
                 placeholder={
                   areas.length === 0 && !drawnBbox
-                    ? 'Country, region, department, city, district…'
+                    ? 'City, region or country'
                     : 'Add another area…'
                 }
                 className="flex-1 min-w-[180px] bg-transparent text-sm placeholder:text-muted-foreground/70 focus:outline-none"
@@ -1155,15 +1148,14 @@ export function MapsSearch() {
           </div>
             </FormStep>
 
-            <FormStep n={3} title="Start">
+            <div className="space-y-3 pt-1 border-t border-border">
             {/* Optional label */}
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Name <span className="font-normal text-muted-foreground">(optional)</span></label>
+            <div className="pt-4">
               <input
                 type="text"
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
-                placeholder="e.g. Lyon bowlings, March"
+                placeholder="Name of the search (optional)"
                 className="w-full rounded-md border border-input bg-background/50 px-3 py-2 text-sm placeholder:text-muted-foreground/70 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30"
               />
             </div>
@@ -1233,7 +1225,7 @@ export function MapsSearch() {
                 </>
               )}
             </Button>
-            </FormStep>
+            </div>
           </CardContent>
         </Card>
 
@@ -1256,7 +1248,7 @@ export function MapsSearch() {
         drawnBbox={drawnBbox}
         onClearDraw={handleClearDraw}
         loading={previewLoading}
-        placeholder="Type an area on the left, or draw one on the map"
+        placeholder=""
         height={560}
       />
       {cellSelectionIgnored && (
@@ -1274,7 +1266,6 @@ export function MapsSearch() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base">Your searches</CardTitle>
-            <CardDescription>Open one to see its places, export them or send them to the Lead Qualifier.</CardDescription>
           </CardHeader>
           <CardContent className="pb-3">
             <ul className="divide-y divide-border">

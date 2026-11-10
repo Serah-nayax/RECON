@@ -138,19 +138,3 @@
   box-shadow: 0 12px 32px -12px hsl(217 91% 50% / 0.35);
 }
 
-/* OpenStreetMap tiles are light: turned dark to sit in the theme (cells and outlines are not filtered). */
-.map-tiles-dark {
-  filter: invert(1) hue-rotate(190deg) brightness(1.1) contrast(0.8) saturate(0.5);
-}
-.leaflet-bar a {
-  background-color: hsl(var(--card)) !important;
-  color: hsl(var(--foreground)) !important;
-  border-color: hsl(var(--border)) !important;
-}
-.leaflet-container .leaflet-control-attribution {
-  background: hsl(var(--background) / 0.75);
-  color: hsl(var(--muted-foreground));
-}
-.leaflet-control-attribution a {
-  color: hsl(var(--primary));
-}
