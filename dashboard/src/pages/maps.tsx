@@ -41,9 +41,33 @@ const FIELD_ICONS: Record<MapsField, React.ReactNode> = {
   hours: <Clock className="h-3.5 w-3.5" />,
 };
 
-function estimateTimeLeft(job: MapsJob): string {
-  const remaining = job.totalCells - job.completedCells;
-  if (remaining <= 0) return "finishing...";
+/**
+ * A search runs in two steps: every area once (the quick list), then the busy areas cut into
+ * smaller pieces, which can be cut again. Step 2 adds cells while it runs, so a plain
+ * done/total bar reached 100% at the end of step 1 and then fell back. Step 1 fills the first
+ * 30% of the bar (about its share of the time, Paris "arcade": 2 of 7 min), step 2 the rest,
+ * and the bar only reaches 100% when the search is complete.
+ */
+const STEP1_SHARE = 30;
+
+function searchSteps(job: MapsJob) {
+  const active = job.cells.filter((cell) => cell.status !== "skipped");
+  const isOpen = (cell: MapsJob["cells"][number]) => cell.status === "pending" || cell.status === "running";
+  const step1 = active.filter((cell) => !cell.refinement);
+  const step2 = active.filter((cell) => cell.refinement);
+  const step1Left = step1.filter(isOpen).length;
+  const step2Left = step2.filter(isOpen).length;
+  const inStep2 = step1Left === 0 && step2.length > 0;
+  const pct = inStep2
+    ? STEP1_SHARE + ((100 - STEP1_SHARE - 1) * (step2.length - step2Left)) / step2.length
+    : step1.length > 0
+    ? (STEP1_SHARE * (step1.length - step1Left)) / step1.length
+    : 0;
+  return { inStep2, step1Done: step1Left === 0, cellsLeft: inStep2 ? step2Left : step1Left, pct };
+}
+
+function estimateTimeLeft(job: MapsJob, remaining: number, inStep2: boolean): string {
+  if (remaining <= 0) return inStep2 ? "almost done" : "step 1 done";
   // Use the measured pace once a few cells are done (capped, since time spent paused
   // also counts as elapsed); before that, assume ~0.75 min per cell (2 cells in parallel).
   const elapsedMins = (Date.now() - new Date(job.createdAt).getTime()) / 60_000;
@@ -51,10 +75,11 @@ function estimateTimeLeft(job: MapsJob): string {
     ? Math.min(elapsedMins / job.completedCells, 1.5)
     : 0.75;
   const mins = Math.ceil(remaining * minsPerCell);
-  if (mins < 60) return `~${mins}m remaining`;
   const hrs = Math.floor(mins / 60);
   const m = mins % 60;
-  return m > 0 ? `~${hrs}h ${m}m remaining` : `~${hrs}h remaining`;
+  const time = mins < 60 ? `~${mins}m` : m > 0 ? `~${hrs}h ${m}m` : `~${hrs}h`;
+  // Step 1 cannot tell how many busy areas step 2 will cut; step 2 can still cut more.
+  return inStep2 ? `${time}+ remaining` : `step 1: ${time} remaining`;
 }
 
 function StatusBadge({ status }: { status: MapsJob["status"] }) {
@@ -319,6 +344,8 @@ function JobProgress({ jobId, onBack }: { jobId: string; onBack: () => void }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Highest progress shown for this job: the bar never moves back when step 2 adds cells.
+  const maxPctRef = useRef<{ jobId: string; pct: number }>({ jobId, pct: 0 });
 
   const { data: job } = useQuery({
     queryKey: ["maps-job", jobId],
@@ -386,7 +413,10 @@ function JobProgress({ jobId, onBack }: { jobId: string; onBack: () => void }) {
     );
   }
 
-  const pct = job.totalCells > 0 ? Math.round((job.completedCells / job.totalCells) * 100) : 0;
+  const steps = searchSteps(job);
+  if (maxPctRef.current.jobId !== jobId) maxPctRef.current = { jobId, pct: 0 };
+  maxPctRef.current.pct = Math.max(maxPctRef.current.pct, Math.floor(steps.pct));
+  const pct = job.status === "done" ? 100 : maxPctRef.current.pct;
   const selectedFields = job.config.selectedFields;
   const hasDetailFields = selectedFields.some((f) => DETAIL_FIELDS.includes(f));
   const detailTotal = job.results.filter((lead) => lead.detailStatus != null).length;
@@ -538,9 +568,19 @@ function JobProgress({ jobId, onBack }: { jobId: string; onBack: () => void }) {
       {(job.status === "running" || job.status === "paused") && (
         <div className="space-y-1.5">
           <Progress value={pct} className="h-2" />
-          <div className="flex justify-between text-[11px] text-muted-foreground font-mono">
-            <span>{pct}% complete</span>
-            {job.status === "running" && <span>{estimateTimeLeft(job)}</span>}
+          <div className="flex justify-between gap-3 text-[11px] text-muted-foreground font-mono">
+            <span
+              title="Step 1 searches every area once: the list is usable when it ends. Step 2 searches the busiest areas again in smaller pieces (cut again while they are still full), so its number of cells grows as it runs. It only adds places."
+              className="cursor-help"
+            >
+              {pct}% ·{" "}
+              {steps.inStep2
+                ? "step 2 of 2: busy areas in detail"
+                : steps.step1Done
+                ? "step 1 of 2 done, preparing step 2"
+                : "step 1 of 2: every area once"}
+            </span>
+            {job.status === "running" && <span>{estimateTimeLeft(job, steps.cellsLeft, steps.inStep2)}</span>}
           </div>
         </div>
       )}
