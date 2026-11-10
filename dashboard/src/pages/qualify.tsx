@@ -964,7 +964,8 @@ function LeadRow({
 }: {
   lead: LeadResult;
   selectedCrm: CrmTarget;
-  onPushLead: (lead: LeadResult) => Promise<void>;
+  /** Absent when no CRM is connected in Settings: the Push button is hidden. */
+  onPushLead?: (lead: LeadResult) => Promise<void>;
   autoExpand?: boolean;
 }) {
   const [expanded, setExpanded] = useState(autoExpand);
@@ -978,7 +979,7 @@ function LeadRow({
     e.stopPropagation();
     setPushStatus("pushing");
     try {
-      await onPushLead(lead);
+      await onPushLead?.(lead);
       setPushStatus("done");
     } catch {
       setPushStatus("error");
@@ -1058,7 +1059,7 @@ function LeadRow({
         </td>
         <td className="py-3 px-4 text-right">
           <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
-            {isDone && (
+            {isDone && onPushLead && (
               <button
                 onClick={handlePush}
                 disabled={pushStatus === "pushing" || pushStatus === "done"}
@@ -1135,6 +1136,9 @@ export function Qualify() {
   const [pasteText, setPasteText] = useState("");
   const [inputMode, setInputMode] = useState<"file" | "paste">("file");
   const [selectedCrm, setSelectedCrm] = useState<CrmTarget>("hubspot");
+  // CRM push only shows once HubSpot or Salesforce is connected in Settings.
+  const { data: crmStatus } = useQuery({ queryKey: ["crm-status"], queryFn: crmApi.status, staleTime: 60_000 });
+  const crmReady = !!crmStatus && (crmStatus.hubspot || crmStatus.salesforce);
   const [bulkPushStatus, setBulkPushStatus] = useState<"idle" | "pushing" | "done" | "error">("idle");
   const [verdictTab, setVerdictTab] = useState<"ALL" | "QUALIFY" | "BORDERLINE" | "DISQUALIFY">("ALL");
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -1495,6 +1499,7 @@ export function Qualify() {
                     </Button>
                   )}
                   {/* CRM picker */}
+                  {crmReady && (
                   <div className="flex rounded-md border border-white/10 overflow-hidden text-xs font-mono">
                     <button
                       onClick={() => { setSelectedCrm("hubspot"); setBulkPushStatus("idle"); }}
@@ -1509,8 +1514,9 @@ export function Qualify() {
                       Salesforce
                     </button>
                   </div>
+                  )}
                   {/* Bulk push — qualified leads */}
-                  {isDone && qualifyCount > 0 && (
+                  {crmReady && isDone && qualifyCount > 0 && (
                     <Button
                       size="sm"
                       variant="outline"
@@ -1677,7 +1683,7 @@ export function Qualify() {
                       </thead>
                       <tbody>
                         {filteredLeads.map((lead, i) => (
-                          <LeadRow key={lead.leadId} lead={lead} selectedCrm={selectedCrm} onPushLead={pushLead} autoExpand={fromDeepLink && i === 0} />
+                          <LeadRow key={lead.leadId} lead={lead} selectedCrm={selectedCrm} onPushLead={crmReady ? pushLead : undefined} autoExpand={fromDeepLink && i === 0} />
                         ))}
                         {filteredLeads.length === 0 && (
                           <tr>

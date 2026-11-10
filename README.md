@@ -21,7 +21,7 @@
 1. **ICP.** Choose who you are looking for: pick an ideal customer profile or write one.
 2. **Maps Search.** Type what you are looking for and pick an area. RECON searches Google Maps across the whole area and lists every place it finds.
 3. **Lead Qualifier.** Send the places found, or upload a list. RECON reads each website and scores the lead 0–100 against the active ICP, with a verdict and the evidence behind it.
-4. **History and export.** Download the results as Excel or CSV once a batch is finished, or push qualified leads to HubSpot or Salesforce.
+4. **History and export.** Download the results as Excel or CSV once a batch is finished; with HubSpot or Salesforce connected in Settings, qualified leads can be pushed there.
 
 ## Quick start (Windows)
 

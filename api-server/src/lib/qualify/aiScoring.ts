@@ -151,6 +151,13 @@ HOW TO ANSWER
 2. icpFit: does this kind of business belong to the ICP's target?
    "yes" = clearly the target kind of business; "partial" = related but unsure;
    "no" = a different kind of business; "unknown" = not enough content to tell.
+   Judge the KIND of business only (venue type, and whether it runs the kind of machines or games
+   the ICP targets). Do not lower icpFit because buying signals are missing (payment system, game
+   cards, counter, redemption, loyalty…): the qualify signals score those. A target venue that
+   still runs on coins or cash is the opportunity, not a weaker fit.
+   "partial" is for a venue of the target kind whose fit is unclear, or a nearby kind of venue that
+   does show the machines or games the ICP targets. A nearby activity that shows none of them
+   (e.g. a VR arena, escape room or trampoline park with no arcade games, for an arcade ICP) is "no".
 3. Give one answer for EVERY qualify signal (q1, q2…) and every disqualify signal (d1, d2…), in
    order, with "signal" set to its code. Each answer is about that signal only:
    - evidence: an EXACT quote copied character for character from the lead's content that shows
@@ -277,10 +284,11 @@ export function readAssessment(parsed: any, icp: IcpConfig, content: string): Ai
 
 // Score floor per fit: what a lead is worth before any qualify signal is confirmed.
 const FIT_BASE: Record<IcpFit, number> = { yes: 60, partial: 42, unknown: 30, no: 10 };
-// Score reached with all the needed signals. Only the ICP's real target reaches 100: on the Lyon test
-// (Nov 2026) a laser-tag center the model itself called a partial fit ("no arcade machines")
-// reached 100 with four side signals (packs, birthdays, membership card, tournaments).
-const FIT_CEILING: Record<IcpFit, number> = { yes: 100, partial: 75, unknown: 60, no: 10 };
+// Score reached with all the needed signals. Only the ICP's real target can be a QUALIFY (60+): on
+// the Lyon test (Nov 2026) a laser-tag center the model itself called a partial fit ("no arcade
+// machines") reached 100 with side signals, and on Aix (Nov 10) a trampoline park "with no evidence
+// of amusement machines" scored 67 QUALIFY. A partial fit stays at most BORDERLINE.
+const FIT_CEILING: Record<IcpFit, number> = { yes: 100, partial: 59, unknown: 59, no: 10 };
 // Confirmed signals needed for the top of the range. ICP signals overlap and some exclude each
 // other (token vs. cashless), so a real target rarely meets all of them.
 const SIGNALS_FOR_FULL_SCORE = 4;

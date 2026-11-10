@@ -17,13 +17,13 @@ Batches run in the background. They can be stopped, resumed and retried, and res
 | **Verdict** | QUALIFY (60+), BORDERLINE (40–59), DISQUALIFY (below 40) |
 | **Signals** | The evidence for and against, quoted from the website or taken from Maps |
 
-Results can be exported to Excel once every lead of the batch is scored (a stopped batch must be resumed first), or pushed to HubSpot or Salesforce.
+Results can be exported to Excel once every lead of the batch is scored (a stopped batch must be resumed first). Once HubSpot or Salesforce is connected in Settings, they can also be pushed there (the Push buttons are hidden until then).
 
 ## How a lead is scored
 
 1. **RECON reads the website**: the homepage and the most useful pages. A lead without a website is scored from its name and Maps data.
 2. **The AI (Claude) analyses the site**: what kind of business it is, and which ICP signals it meets, each backed by a quote from the site. RECON checks that every quote is really on the site.
-3. **RECON computes the score** from the verified facts. The same evidence always gives the same score. A lead with an uncertain score is analysed again to confirm it.
+3. **RECON computes the score** from the verified facts. The same evidence always gives the same score. A lead with an uncertain score is analysed again to confirm it. Only a lead that is clearly the ICP's kind of business can reach QUALIFY: a related venue whose fit is unsure stays BORDERLINE at most, whatever its other signals. A missing payment system does not lower the fit (a venue still on coins is the opportunity).
 
 Without AI, a local model scores the leads on the machine.
 
