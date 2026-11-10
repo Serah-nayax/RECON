@@ -36,7 +36,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   ];
   const sideLinks = [{ href: "/settings", label: "Settings", icon: Settings }];
   const linkClass = (href: string) =>
-    `flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors text-sm ${
+    `flex items-center gap-2 whitespace-nowrap px-3 py-1.5 rounded-lg transition-colors text-sm ${
       location.startsWith(href)
         ? "bg-primary/12 text-foreground font-medium ring-1 ring-inset ring-primary/30"
         : "text-muted-foreground hover:text-foreground hover:bg-white/[0.04]"
@@ -61,7 +61,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 >
                   {link.step}
                 </span>
-                <Icon className="h-4 w-4" />
+                <Icon className="hidden lg:block h-4 w-4" />
                 {link.label}
               </Link>
             );
