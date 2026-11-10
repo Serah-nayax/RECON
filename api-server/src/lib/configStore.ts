@@ -41,7 +41,7 @@ export async function listConfigs(): Promise<ConfigEntry[]> {
 }
 
 export async function setConfig(key: string, value: string, label: string, category: string): Promise<void> {
-  cache.set(key, value);
+  // The database first: a failed save must not leave a value that works until the next restart.
   await db
     .insert(platformConfig)
     .values({ key, value, label, category, createdAt: new Date(), updatedAt: new Date() })
@@ -49,11 +49,12 @@ export async function setConfig(key: string, value: string, label: string, categ
       target: platformConfig.key,
       set: { value, label, category, updatedAt: new Date() },
     });
+  cache.set(key, value);
 }
 
 export async function deleteConfig(key: string): Promise<void> {
-  cache.delete(key);
   await db.delete(platformConfig).where(eq(platformConfig.key, key));
+  cache.delete(key);
 }
 
 export function getConfig(key: string): string | undefined {

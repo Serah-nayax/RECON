@@ -172,7 +172,10 @@ async function persistIcp(config: IcpConfig): Promise<void> {
         },
       });
   } catch (err) {
-    logger.error({ err }, "Failed to persist ICP config to DB");
+    // Thrown, not swallowed: a change kept only in memory looked saved but was lost on restart,
+    // and the rest of the team never saw it.
+    logger.error({ err, id: config.id }, "Failed to persist ICP config to DB");
+    throw err;
   }
 }
 
@@ -249,8 +252,8 @@ export async function createIcp(data: Omit<IcpConfig, "id" | "isActive" | "creat
     createdAt: now,
     updatedAt: now,
   };
-  store.set(config.id, config);
   await persistIcp(config);
+  store.set(config.id, config);
   return { ...config };
 }
 
@@ -258,8 +261,8 @@ export async function updateIcpById(id: string, updates: Partial<Omit<IcpConfig,
   const existing = store.get(id);
   if (!existing) return null;
   const updated: IcpConfig = { ...existing, ...updates, updatedAt: new Date().toISOString() };
-  store.set(id, updated);
   await persistIcp(updated);
+  store.set(id, updated);
   return { ...updated };
 }
 
@@ -267,44 +270,50 @@ export async function activateIcp(id: string): Promise<IcpConfig | null> {
   const target = store.get(id);
   if (!target) return null;
 
-  // Deactivate current active
-  if (activeIcpId && activeIcpId !== id) {
-    const prev = store.get(activeIcpId);
+  // The database first, memory once it is saved: a failure leaves both unchanged.
+  const activated: IcpConfig = { ...target, isActive: true, updatedAt: new Date().toISOString() };
+  await persistIcp(activated);
+  store.set(id, activated);
+  const previousId = activeIcpId;
+  activeIcpId = id;
+
+  if (previousId && previousId !== id) {
+    const prev = store.get(previousId);
     if (prev) {
-      prev.isActive = false;
-      store.set(activeIcpId, prev);
-      await persistIcp(prev);
+      const deactivated: IcpConfig = { ...prev, isActive: false };
+      try {
+        await persistIcp(deactivated);
+      } catch {
+        // Already logged. Two rows stay marked active in the database until the next activation.
+      }
+      store.set(previousId, deactivated);
     }
   }
-
-  target.isActive = true;
-  target.updatedAt = new Date().toISOString();
-  store.set(id, target);
-  activeIcpId = id;
-  await persistIcp(target);
-  return { ...target };
+  return { ...activated };
 }
 
 export async function deleteIcp(id: string): Promise<boolean> {
   if (!store.has(id)) return false;
-  const config = store.get(id)!;
-  store.delete(id);
-
   try {
     await db.delete(icpConfig).where(eq(icpConfig.id, id));
   } catch (err) {
     logger.error({ err, id }, "Failed to delete ICP from DB");
+    throw err;
   }
+  store.delete(id);
 
   // If deleting the active one, activate the most recent remaining
   if (activeIcpId === id) {
+    activeIcpId = null;
     const remaining = Array.from(store.values()).sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
     if (remaining.length > 0) {
-      await activateIcp(remaining[0].id);
-    } else {
-      activeIcpId = null;
+      try {
+        await activateIcp(remaining[0].id);
+      } catch {
+        // The delete itself succeeded; getIcp falls back to the newest remaining ICP.
+      }
     }
   }
 
@@ -322,8 +331,8 @@ export async function resetIcp(): Promise<IcpConfig> {
     createdAt: active?.createdAt ?? now,
     updatedAt: now,
   };
+  await persistIcp(reset);
   store.set(id, reset);
   activeIcpId = id;
-  await persistIcp(reset);
   return { ...reset };
 }

@@ -526,6 +526,9 @@ function cellsFinished(jobId: string): number {
 async function runMapsJob(jobId: string): Promise<void> {
   const job = getMapsJob(jobId);
   if (!job) return;
+  // Paused again (or ended) while this run waited for the previous one to stop: the user's
+  // pause wins, the search does not start behind their back.
+  if (job.status === "paused" || job.status === "done" || job.status === "failed") return;
 
   updateMapsJob(jobId, { status: "running" });
 
@@ -1023,7 +1026,9 @@ async function runMapsJob(jobId: string): Promise<void> {
   const finalJob = getMapsJob(jobId);
   if (!finalJob) return;
 
-  if (finalJob.status === "paused" || finalJob.status === "failed") return;
+  // Paused during this run: the pause set the status. If the user already resumed, the status
+  // is "running" again and the next run (queued) carries on: this one must not mark it paused.
+  if (signal.aborted || finalJob.status === "paused" || finalJob.status === "failed") return;
 
   // Quick pass done (every grid cell searched once): cut the cells that were full, then run
   // again on their quarters. The places found so far stay as they are; quarters only add.

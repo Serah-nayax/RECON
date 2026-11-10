@@ -107,7 +107,7 @@ The defaults were measured on real searches. Change them only when you investiga
 ## Settings page
 
 - **Platform › Crawler API Key**: the `CRAWLER_API_KEY` of a shared RECON server. The browser keeps it and sends it with each request. It is not needed locally.
-- **CRM Integrations**: a HubSpot access token, or Salesforce credentials, used to push qualified leads. They are stored in the database, and the same names also work as environment variables.
+- **CRM Integrations**: a HubSpot access token, or Salesforce credentials, used to push qualified leads. They are stored in the database, and the same names also work as environment variables. A push updates the company that has the same website domain (or the same name, for a place without a website), and creates it otherwise. Empty values never overwrite what is already in the CRM. The RECON fields (`recon_score`, `recon_verdict`… in HubSpot; `RECON_Score__c`… in Salesforce) must exist as custom properties/fields in the CRM, or the push reports which one is missing.
 
 ## Troubleshooting
 
