@@ -454,6 +454,9 @@ function JobProgress({ jobId, onBack }: { jobId: string; onBack: () => void }) {
   // Places unrelated to the search (a shop, an office...) stay stored but are not listed.
   const shownLeads = job.results.filter((lead) => lead.relevance !== "offTopic");
   const leftOut = job.results.filter((lead) => lead.relevance === "offTopic");
+  // The list is usable once every area has been searched once (step 1): export and qualify
+  // from then on. Step 2 only adds places.
+  const listUsable = (job.status !== "running" && job.status !== "pending") || steps.step1Done;
   const leftOutTitle = leftOut.length
     ? `Unrelated to the search (shops, offices, services...), so not listed, exported or qualified. For example: ${leftOut
         .slice(0, 12)
@@ -543,7 +546,7 @@ function JobProgress({ jobId, onBack }: { jobId: string; onBack: () => void }) {
           </div>
         </div>
         <div className="flex gap-2 shrink-0">
-          {shownLeads.length > 0 && job.status !== "running" && job.status !== "pending" && (
+          {shownLeads.length > 0 && listUsable && (
             <>
               <Button
                 variant="ghost"
@@ -602,9 +605,9 @@ function JobProgress({ jobId, onBack }: { jobId: string; onBack: () => void }) {
             >
               {pct}% ·{" "}
               {steps.inStep2
-                ? "step 2 of 2: busy areas in detail"
+                ? "step 2 of 2: busy areas in detail (the list is ready, this only adds places)"
                 : steps.step1Done
-                ? "step 1 of 2 done, preparing step 2"
+                ? "step 1 of 2 done: the list is ready, preparing step 2"
                 : "step 1 of 2: every area once"}
             </span>
             {job.status === "running" && <span>{estimateTimeLeft(job, steps.cellsLeft, steps.inStep2)}</span>}
@@ -665,6 +668,10 @@ function JobProgress({ jobId, onBack }: { jobId: string; onBack: () => void }) {
               <h3 className="text-sm font-semibold text-muted-foreground font-mono">
                 Leads ({shownLeads.length.toLocaleString()})
               </h3>
+              {!listUsable && (
+                <span className="text-xs text-muted-foreground">Export and Qualify All open once every area has been searched (step 1).</span>
+              )}
+              {listUsable && (
               <div className="flex items-center gap-3 shrink-0">
                 <Button
                   size="sm"
@@ -677,7 +684,7 @@ function JobProgress({ jobId, onBack }: { jobId: string; onBack: () => void }) {
                     withoutWebsite > 0
                       ? `${withoutWebsite} have no website on Google Maps: they are scored from their name, category and Google Maps data.`
                       : "",
-                    job.status === "running" ? "The search is still running: places found later are not included." : "",
+                    job.status === "running" ? "Step 2 is still adding places: the ones found later are not included." : "",
                   ].filter(Boolean).join(" ")}
                 >
                   {qualifyAllMut.isPending ? (
@@ -688,6 +695,7 @@ function JobProgress({ jobId, onBack }: { jobId: string; onBack: () => void }) {
                   Qualify All ({shownLeads.length})
                 </Button>
               </div>
+              )}
             </div>
 
             <div className="max-h-[600px] overflow-auto rounded-lg border border-white/10">

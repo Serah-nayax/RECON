@@ -14,7 +14,7 @@ Every place comes with its name, category, address, rating, reviews, phone, webs
 
 - The area is cut into cells, and each cell is searched on Google Maps.
 - Busy cells are cut into smaller ones and searched again, so that no place is missed.
-- The progress bar has two steps: step 1 searches every cell once, step 2 searches the busy areas in detail.
+- The progress bar has two steps: step 1 searches every cell once, step 2 searches the busy areas again in smaller pieces. The list is ready when step 1 ends: Excel, CSV and Qualify All open then; step 2 only adds places.
 - Each term is also searched in the area's language and under the matching Google categories.
 - Only places inside the area's outline are kept.
 
