@@ -486,6 +486,18 @@ function JobProgress({ jobId, onBack }: { jobId: string; onBack: () => void }) {
                 : "• Worldwide"}
             </span>
           </h2>
+          {(() => {
+            const terms = job.termYield
+              ? job.termYield.filter((t) => !t.auto).map((t) => t.term)
+              : [job.config.searchTerm];
+            const extra = job.termYield?.filter((t) => t.auto).length ?? 0;
+            return (
+              <p className="text-sm text-muted-foreground mt-1">
+                Searching: <span className="text-foreground">{terms.join(", ")}</span>
+                {extra > 0 && <span> + {extra} related term{extra > 1 ? "s" : ""}</span>}
+              </p>
+            );
+          })()}
           <div className="flex items-center gap-2 mt-1 flex-wrap">
             <StatusBadge status={job.status} />
             <span className="text-xs text-muted-foreground font-mono">
@@ -531,7 +543,7 @@ function JobProgress({ jobId, onBack }: { jobId: string; onBack: () => void }) {
           </div>
         </div>
         <div className="flex gap-2 shrink-0">
-          {shownLeads.length > 0 && (
+          {shownLeads.length > 0 && job.status !== "running" && job.status !== "pending" && (
             <>
               <Button
                 variant="ghost"

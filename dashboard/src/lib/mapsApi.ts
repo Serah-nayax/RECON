@@ -123,6 +123,8 @@ export interface MapsJob {
   error: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Per search term: auto = added by RECON (synonym), not typed by the user. Job detail only. */
+  termYield?: { term: string; auto: boolean }[];
 }
 
 export interface DrawnBbox {
