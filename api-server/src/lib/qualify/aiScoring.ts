@@ -68,9 +68,11 @@ const signalAnswers = (prefix: "q" | "d", signals: string[]) => ({
 export function buildAnswerSchema(icp: IcpConfig): Record<string, unknown> {
   return obj({
     businessType: str,
+    // Quotes before the verdict: the model finds the evidence first, then decides.
+    icpVenueQuote: str,
+    icpFitEvidence: str,
     icpFit: { type: "string", enum: ["yes", "partial", "no", "unknown"] },
     icpFitReason: str,
-    icpFitEvidence: str,
     qualifySignals: signalAnswers("q", icp.qualifySignals),
     disqualifySignals: signalAnswers("d", icp.disqualifySignals),
     painPoints: { type: "array", items: str },
@@ -148,16 +150,37 @@ HOW TO ANSWER
 1. businessType: what this company actually IS, in 2-6 words, judged from the content
    (e.g. "toy retail chain", "family entertainment center", "online casino", "bar with 3 arcade games").
    A shop selling games, a manufacturer, a distributor or an online site is NOT a venue operating them.
-2. icpFit: does this kind of business belong to the ICP's target?
-   "yes" = clearly the target kind of business; "partial" = related but unsure;
-   "no" = a different kind of business; "unknown" = not enough content to tell.
-   Judge the KIND of business only (venue type, and whether it runs the kind of machines or games
-   the ICP targets). Do not lower icpFit because buying signals are missing (payment system, game
-   cards, counter, redemption, loyalty…): the qualify signals score those. A target venue that
-   still runs on coins or cash is the opportunity, not a weaker fit.
-   "partial" is for a venue of the target kind whose fit is unclear, or a nearby kind of venue that
-   does show the machines or games the ICP targets. A nearby activity that shows none of them
-   (e.g. a VR arena, escape room or trampoline park with no arcade games, for an arcade ICP) is "no".
+2. Does this kind of business belong to the ICP's target? Judge the KIND of business only: its
+   venue type, and whether it runs the kind of machines or games the ICP targets. Answer with two
+   quotes first; RECON checks them and derives the fit from them, so the same facts always give
+   the same result.
+   - icpVenueQuote: the exact words of the ICP text above (its description or guidance) that name
+     this venue type as a target, or the broader type it belongs to: a pizzeria or diner is a
+     "restaurant", a taproom or brewpub is a "bar", and any venue whose main business is the games
+     (claw machine arcade, video game center, game room) is an "arcade". Copy the ICP's own
+     words (e.g. "restaurants", "bowling alleys"). Empty string if the ICP names no such venue
+     type. Do not quote a type the venue only resembles, and never quote a list of exclusions.
+     When the ICP names the type only under a condition ("trampoline centers with a staffed
+     arcade"), the condition must be shown too.
+   - icpFitEvidence: an exact quote from the lead's content that states this venue runs the
+     machines or games the ICP targets: an arcade, game room, game corner, amusement or prize
+     machines… The Google Maps category is often wrong: it is enough only when there is no website
+     content, or the website agrees. When the website shows a different activity and no machines
+     (e.g. a trampoline park or VR arena tagged "Video arcade"), leave this empty.
+     Empty string if the content shows none.
+   - icpFit:
+     "yes" = both quotes found: a venue type the ICP names, running the machines or games.
+     "partial" = the machines or games are shown but the ICP does not name the venue type.
+     "no" = a different kind of business, or a nearby activity that shows none of the machines or
+     games (e.g. a VR arena, escape room or trampoline park with no arcade games, for an arcade
+     ICP).
+     "unknown" = not enough content to tell, or a venue type the ICP names whose content shows no
+     machines or games.
+   Details that are not described (how many machines, how big the room is, who operates the
+   machines, how they are paid) never lower the fit: they are unknown, and the qualify signals score
+   them. Missing buying signals (payment system, game cards, counter, redemption, loyalty…) do not
+   lower it either. A target venue that still runs on coins or cash is the opportunity, not a
+   weaker fit.
 3. Give one answer for EVERY qualify signal (q1, q2…) and every disqualify signal (d1, d2…), in
    order, with "signal" set to its code. Each answer is about that signal only:
    - evidence: an EXACT quote copied character for character from the lead's content that shows
@@ -181,9 +204,10 @@ Write all labels and free text in English, whatever the language of the site.
 Return ONLY valid JSON with this exact structure:
 {
   "businessType": "<2-6 words>",
+  "icpVenueQuote": "<exact words of the ICP text or empty>",
+  "icpFitEvidence": "<exact quote from the lead's content or empty>",
   "icpFit": "yes" | "partial" | "no" | "unknown",
   "icpFitReason": "<one sentence>",
-  "icpFitEvidence": "<exact quote or empty>",
   "qualifySignals": [{"signal": "q1", "evidence": "<exact quote or empty>", "label": "<3-6 words>", "status": "met" | "not_met" | "unknown"}, ... one per qualify signal],
   "disqualifySignals": [{"signal": "d1", "evidence": "<exact quote or empty>", "label": "<3-6 words>", "status": "met" | "not_met" | "unknown"}, ... one per disqualify signal],
   "painPoints": ["<5-10 word operational problem this company has that the ICP's offer solves>", ... up to 4],
@@ -235,6 +259,12 @@ export function quoteIsInContent(quote: string, normalizedContent: string): bool
   return false;
 }
 
+/** True when the quote appears as whole words in the text ("bars" must not match "barstool"). */
+function wordsAreIn(quote: string, normalizedText: string): boolean {
+  const q = normalize(quote);
+  return q.length >= 3 && ` ${normalizedText} `.includes(` ${q} `);
+}
+
 function readStatus(value: unknown): SignalStatus {
   return value === "met" || value === "not_met" ? value : "unknown";
 }
@@ -269,13 +299,41 @@ export function readAssessment(parsed: any, icp: IcpConfig, content: string): Ai
   const rawFit = parsed?.icpFit;
   let fit: IcpFit = rawFit === "yes" || rawFit === "partial" || rawFit === "no" ? rawFit : "unknown";
   const fitEvidence = typeof parsed?.icpFitEvidence === "string" ? parsed.icpFitEvidence.trim() : "";
-  // "This is exactly the target" needs a quote; without one it is only a partial fit.
-  if (fit === "yes" && !quoteIsInContent(fitEvidence, normalizedContent)) fit = "partial";
+  const venueQuote = typeof parsed?.icpVenueQuote === "string" ? parsed.icpVenueQuote.trim() : "";
+  // Between "yes" and "partial" the model's own judgement varied on identical facts: on the Santa
+  // Rosa test (Nov 2026) three Mountain Mike's pizzerias with the same "arcade" amenity got "yes",
+  // "yes" and "partial" (70 / 70 / 51), the model saying once that the Street Route ICP names
+  // restaurants and once that it does not. The model now quotes the ICP's own words naming the
+  // venue type and the content showing the machines before it decides, and both quotes are checked.
+  // The checks only lower the fit, never raise it: letting them turn "partial" into "yes" made a
+  // trampoline park (ICP quote "trampoline", Maps category "Video arcade") a 90 QUALIFY on Aix.
+  // A venue with no machine shown (a bar, a wings restaurant) is not a known target: "unknown",
+  // a DISQUALIFY unless signals lift it, never more than BORDERLINE.
+  // The one raise allowed: a venue whose content shows the machines is at least "partial". With the
+  // FEC ICP the same pizzeria-with-arcade page got "no" (10) on some runs and "partial" (51) on
+  // others; "partial" is capped at BORDERLINE, so this cannot create a false QUALIFY.
+  const modelFit = fit;
+  const machinesShown = quoteIsInContent(fitEvidence, normalizedContent);
+  if (fit === "yes" || fit === "partial") {
+    const venueNamed = wordsAreIn(venueQuote, normalize(`${icp.description} ${icp.systemPrompt}`));
+    if (!machinesShown) fit = "unknown";
+    else if (fit === "yes" && !venueNamed) fit = "partial";
+  } else if (fit === "no" && machinesShown) {
+    fit = "partial";
+  }
+  // The model's sentence was written for its own fit; when the checks changed it, the sentence
+  // would contradict the score, so it is replaced by what the checks found.
+  const modelReason = typeof parsed?.icpFitReason === "string" ? parsed.icpFitReason.trim() : "";
+  const short = (s: string) => (s.length > 80 ? `${s.slice(0, 79)}…` : s);
+  const fitReason =
+    fit === modelFit ? modelReason :
+    fit === "partial" ? `The content shows the games ("${short(fitEvidence)}"), but the ICP's text does not name this kind of venue.` :
+    "No content shows the machines or games the ICP targets.";
 
   return {
     businessType: typeof parsed?.businessType === "string" ? parsed.businessType.trim() : "",
     fit,
-    fitReason: typeof parsed?.icpFitReason === "string" ? parsed.icpFitReason.trim() : "",
+    fitReason,
     fitEvidence,
     qualify: readAnswers(parsed?.qualifySignals, "q", icp.qualifySignals, normalizedContent),
     disqualify: readAnswers(parsed?.disqualifySignals, "d", icp.disqualifySignals, normalizedContent),
@@ -320,7 +378,7 @@ export function scoreAssessment(a: AiAssessment, opts: { hasContent: boolean }):
     a.fit === "yes" ? "fits the ICP's target" :
     a.fit === "partial" ? "partial fit with the ICP's target" :
     a.fit === "no" ? "not the ICP's kind of business" :
-    "not enough content to tell the kind of business",
+    "the machines or games the ICP targets are not shown",
   );
   reasons.push(`${met.length} of ${a.qualify.length} qualify signals confirmed`);
 

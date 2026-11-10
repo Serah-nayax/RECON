@@ -187,16 +187,7 @@ function scoreOpinion(parsed: any, icp: IcpConfig, content: string, hasContent: 
   return { parsed, assessment, scored: scoreAssessment(assessment, { hasContent }) };
 }
 
-// Scores where one more or one less signal changes the verdict. Below 25 the lead is another kind
-// of business (10) and above 75 a target with several quoted signals: both were identical on repeat runs.
-const UNCERTAIN_SCORE_MIN = 25;
-const UNCERTAIN_SCORE_MAX = 75;
-
-function isUncertainScore(score: number): boolean {
-  return score >= UNCERTAIN_SCORE_MIN && score <= UNCERTAIN_SCORE_MAX;
-}
-
-/** Second opinion, and a third if the first two disagree on the verdict. A failed extra call keeps what we have. */
+/** Up to two opinions, and a third if the first two disagree on the verdict. A failed extra call keeps what we have. */
 async function addOpinions(
   opinions: Opinion[],
   askOnce: () => Promise<any>,
@@ -259,11 +250,20 @@ async function scoreFree(
   }
 }
 
+/** The lead's website gave nothing, and the caller asked to be told instead of scoring without it. */
+export class SiteUnreadError extends Error {
+  constructor(url: string) {
+    super(`Website could not be read: ${url}`);
+    this.name = "SiteUnreadError";
+  }
+}
+
 export async function qualifyLead(
   lead: LeadInput,
   icp: IcpConfig,
   onProgress?: (phase: "crawling" | "scoring") => void,
   signal?: AbortSignal,
+  options: { deferIfSiteUnread?: boolean } = {},
 ): Promise<QualifyResult> {
   const cacheKey = getQualificationCacheKey(lead, icp);
   const cached = readCachedQualification(cacheKey);
@@ -291,6 +291,8 @@ export async function qualifyLead(
       }
       pages = await crawlSite(lead.url, 1, FAST_CRAWL_PAGE_LIMIT, signal, FAST_CRAWL_DEADLINE_MS);
     }
+    // Checked before any AI call, so a lead put aside costs nothing.
+    if (pages.length === 0 && options.deferIfSiteUnread) throw new SiteUnreadError(lead.url!);
   }
   // A score made without the lead's own site is kept briefly only, so a retry reads the site again.
   const resultCacheTtlMs = hasWebsite && pages.length === 0 ? UNREAD_SITE_CACHE_TTL_MS : QUALIFICATION_CACHE_TTL_MS;
@@ -359,12 +361,18 @@ export async function qualifyLead(
   }
 
   const usage = emptyUsage("claude", claudeModel());
-  const askOnce = (): Promise<any> =>
-    pRetry(
+  // Each opinion's message ends with its own number. Two identical requests sent at the same time
+  // came back with the same answer (Nov 10 test: pairs [10,10] then [51,51] on the same text in
+  // two runs), so a second opinion asked alongside the first confirmed nothing. The number is
+  // after the cached instructions, so caching is unchanged.
+  let opinionCount = 0;
+  const askOnce = (): Promise<any> => {
+    const opinionPrompt = { ...fullPrompt, lead: `${fullPrompt.lead}\n\n(Independent review #${++opinionCount})` };
+    return pRetry(
       async () => {
         let rawText: string;
         try {
-          rawText = await requestRawText(fullPrompt, lead.name, usage, signal);
+          rawText = await requestRawText(opinionPrompt, lead.name, usage, signal);
         } catch (err) {
           if (signal?.aborted) {
             throw new AbortError(new Error("Qualification cancelled"));
@@ -383,10 +391,17 @@ export async function qualifyLead(
       },
       { retries: 4, minTimeout: 3000, maxTimeout: 30000, factor: 2, randomize: true },
     );
+  };
 
-  let parsed: any;
+  // Two opinions from the start, asked at the same time (no extra wait). The model is not
+  // repeatable, at any score: on the Santa Rosa and Aix repeat runs (Nov 10, 2026, 3 runs x 17
+  // leads x 3 ICPs) one lead in five changed verdict, at the extremes too (EVA 10 / 10 / 90 with
+  // the Barcades ICP, a pizzeria 80 / 51 / 51). A single opinion outside 25-75 used to be trusted.
+  let firstReplies: any[] = [];
   try {
-    parsed = await askOnce();
+    const settled = await Promise.allSettled([askOnce(), askOnce()]);
+    firstReplies = settled.flatMap((s) => (s.status === "fulfilled" ? [s.value] : []));
+    if (firstReplies.length === 0) throw (settled[0] as PromiseRejectedResult).reason;
   } catch (error) {
     if (signal?.aborted) throw new Error("Qualification cancelled");
     if (!isRecoverableAiError(error)) throw withAiUsage(error, usage);
@@ -404,22 +419,16 @@ export async function qualifyLead(
   try {
     // The model reports facts with quotes; the score is computed here from the verified ones.
     const hasContent = pages.length > 0;
-    let opinions = [scoreOpinion(parsed, icp, leadContext, hasContent)];
-    // The model is not fully repeatable: on repeat runs, clear cases kept their score but some
-    // uncertain ones moved by up to 25 points and changed verdict. An uncertain score gets a
-    // second opinion; if the two verdicts differ, a third decides (the median opinion is kept).
-    if (isUncertainScore(opinions[0].scored.score)) {
-      opinions = await addOpinions(opinions, askOnce, icp, leadContext, hasContent, lead.name, signal);
-    }
+    let opinions = firstReplies.map((reply) => scoreOpinion(reply, icp, leadContext, hasContent));
+    // If the two verdicts differ (or one call failed), a third opinion decides: the median is kept.
+    opinions = await addOpinions(opinions, askOnce, icp, leadContext, hasContent, lead.name, signal);
     const chosen = pickOpinion(opinions);
-    parsed = chosen.parsed;
+    const parsed = chosen.parsed;
     const { assessment, scored } = chosen;
-    if (opinions.length > 1) {
-      logger.info(
-        { lead: lead.name, scores: opinions.map((o) => o.scored.score), kept: scored.score },
-        "Uncertain lead re-checked",
-      );
-    }
+    logger.info(
+      { lead: lead.name, scores: opinions.map((o) => o.scored.score), kept: scored.score },
+      opinions.length > 2 ? "AI opinions disagreed, a third decided" : "AI opinions compared",
+    );
 
     const venueIntel: VenueIntel | null = parsed.venueIntel
       ? {

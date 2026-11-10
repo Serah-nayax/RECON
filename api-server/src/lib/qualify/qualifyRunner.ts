@@ -1,6 +1,6 @@
 import { getBatch, isBatchCancelled, onBatchCancelled, updateBatch, updateLead } from "./qualifyStore.js";
 import { getIcp } from "../icpStore.js";
-import { aiUsageOfError, qualifyLead } from "./qualifyLead.js";
+import { aiUsageOfError, qualifyLead, SiteUnreadError } from "./qualifyLead.js";
 import { logger } from "../logger.js";
 import { isClaudeConfigured } from "./claudeClient.js";
 
@@ -64,7 +64,52 @@ export async function runQualifyBatch(batchId: string): Promise<void> {
   logger.info({ batchId, totalLeads: batch.leads.length }, "Starting qualify batch");
 
   // Skip finished leads so a batch resumed after a restart only does what's left.
-  const queue = batch.leads.filter((l) => l.status !== "done" && l.status !== "failed");
+  const firstRound = batch.leads.filter((l) => l.status !== "done" && l.status !== "failed");
+
+  // A lead whose site gives nothing is put aside, then read again once the rest of the batch is
+  // done. In a Nov 2026 test a network cut of about a minute left every site of a batch unread,
+  // and all were scored as if they had no website: the Mountain Mike's arcades fell from 70 to
+  // 10-30. A site still unread on the second round is scored without it, as before.
+  const putAside = await runRound(batchId, icp, firstRound, true);
+  if (putAside.length > 0 && !isBatchCancelled(batchId)) {
+    logger.info({ batchId, leads: putAside.length }, "Websites unread, trying them again at the end of the batch");
+    await waitUnlessCancelled(batchId, UNREAD_SITE_RETRY_DELAY_MS);
+    if (!isBatchCancelled(batchId)) await runRound(batchId, icp, putAside, false);
+  }
+
+  // A resumed batch with nothing left never goes through updateLead's "done" check.
+  const finished = getBatch(batchId);
+  if (finished && finished.status !== "done" && !isBatchCancelled(batchId) &&
+      finished.leads.every((l) => l.status === "done" || l.status === "failed")) {
+    updateBatch(batchId, { status: "done" });
+  }
+
+  logger.info({ batchId }, "Qualify batch complete");
+}
+
+const UNREAD_SITE_RETRY_DELAY_MS = 30_000;
+
+function waitUnlessCancelled(batchId: string, ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(done, ms);
+    const unregister = onBatchCancelled(batchId, done);
+    function done() {
+      clearTimeout(timer);
+      unregister();
+      resolve();
+    }
+  });
+}
+
+/** Qualifies the leads; returns those put aside because their website could not be read. */
+async function runRound(
+  batchId: string,
+  icp: ReturnType<typeof getIcp>,
+  leads: Array<{ leadId: string; input: Parameters<typeof qualifyLead>[0] }>,
+  deferIfSiteUnread: boolean,
+): Promise<typeof leads> {
+  const queue = [...leads];
+  const putAside: typeof leads = [];
   let activeCount = 0;
 
   await new Promise<void>((resolve) => {
@@ -94,7 +139,7 @@ export async function runQualifyBatch(batchId: string): Promise<void> {
 
             const result = await qualifyLead(lead.input, icp, (phase) => {
               updateLead(batchId, lead.leadId, { status: phase === "scoring" ? "scoring" : "crawling" });
-            }, abortController.signal);
+            }, abortController.signal, { deferIfSiteUnread });
 
             if (!isBatchCancelled(batchId)) {
               updateLead(batchId, lead.leadId, {
@@ -121,7 +166,10 @@ export async function runQualifyBatch(batchId: string): Promise<void> {
             }
           } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
-            if (!isBatchCancelled(batchId)) {
+            if (err instanceof SiteUnreadError) {
+              putAside.push(lead);
+              updateLead(batchId, lead.leadId, { status: "pending" });
+            } else if (!isBatchCancelled(batchId)) {
               logger.error({ batchId, leadId: lead.leadId, err: message }, "Lead qualification failed");
               updateLead(batchId, lead.leadId, {
                 status: "failed",
@@ -138,16 +186,11 @@ export async function runQualifyBatch(batchId: string): Promise<void> {
             // or the batch run never ends.
             activeCount--;
             processNext();
-            const currentBatch = getBatch(batchId);
-            if (currentBatch && currentBatch.completedCount === currentBatch.totalCount) {
-              resolve();
-            }
           }
         })();
       }
 
-      const currentBatch = getBatch(batchId);
-      if (currentBatch && activeCount === 0 && queue.length === 0) {
+      if (activeCount === 0 && queue.length === 0) {
         resolve();
       }
     }
@@ -155,12 +198,5 @@ export async function runQualifyBatch(batchId: string): Promise<void> {
     processNext();
   });
 
-  // A resumed batch with nothing left never goes through updateLead's "done" check.
-  const finished = getBatch(batchId);
-  if (finished && finished.status !== "done" && !isBatchCancelled(batchId) &&
-      finished.leads.every((l) => l.status === "done" || l.status === "failed")) {
-    updateBatch(batchId, { status: "done" });
-  }
-
-  logger.info({ batchId }, "Qualify batch complete");
+  return putAside;
 }
