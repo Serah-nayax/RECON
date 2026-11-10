@@ -20,51 +20,39 @@
 
 ## What it does
 
-1. **Maps Search.** Pick an area (a city, a département, a whole country, or draw a box) and type what you look for ("arcade", "bowling alley"). RECON cuts the area into cells, searches Google Maps in each one and collects every place: name, category, address, rating, reviews, and optionally phone, website and hours.
-2. **Lead Qualifier.** Send the places found (or upload a CSV / Excel list). RECON reads each website and scores the lead 0–100 against the active ICP, with a verdict (QUALIFY, BORDERLINE, DISQUALIFY) and the evidence it found.
-3. **Export.** Download the places or the scored leads as CSV / Excel, or push qualified leads to HubSpot or Salesforce.
-
-Maps Search is **free to run**: Google Maps is read with a local headless browser, and area outlines come from OpenStreetMap and GeoNames. For Qualify, **Claude Haiku is the recommended scorer** (`RECON_ENABLE_CLAUDE=1`, about $1.30 for 850 leads in November 2026, see [setup](docs/setup.md#optional-ai-claude-recommended-for-qualify)). Without AI, leads are scored by a small free model that runs on your machine, but it was not reliable enough on real lists. Gemini is another option.
+1. **Maps Search.** Pick an area and type what you are looking for. RECON searches Google Maps across the whole area and lists every place it finds.
+2. **Lead Qualifier.** Send the places found, or upload a list. RECON reads each website and scores the lead 0–100 against the active ICP, with a verdict and the evidence behind it.
+3. **Export.** Download the results as CSV or Excel, or push qualified leads to HubSpot or Salesforce.
 
 ## Quick start (Windows)
 
-You need [Node.js](https://nodejs.org) 20+, `pnpm` (`npm i -g pnpm`), [Git for Windows](https://git-scm.com) and a PostgreSQL database (the team uses [Neon](https://neon.com)).
+You need [Node.js](https://nodejs.org) 20+, `pnpm` (`npm i -g pnpm`), [Git for Windows](https://git-scm.com) and a PostgreSQL database.
 
-1. Put the database URL in `.env.local` at the repo root (`DATABASE_URL=postgres://...`). `neon env pull` writes it for you.
-2. Double-click **`start-recon.cmd`**.
+1. Put the database URL in `.env.local` at the repo root: `DATABASE_URL=postgres://...`
+2. Double-click **`start-recon.cmd`**. It opens RECON on `http://localhost:8080`.
 
-The first run installs the dependencies and the browser used for Google Maps, builds the app and opens `http://localhost:8080`. After a code change, run `start-recon.cmd rebuild`.
-
-Full setup, configuration and troubleshooting: [docs/setup.md](docs/setup.md).
+After pulling new code, run `start-recon.cmd rebuild`.
 
 ## Documentation
 
-| Guide | What it covers |
+| Guide | Content |
 |---|---|
-| [Strategy and decisions](docs/strategy.md) | What we chose and why, what we measured, what is left |
-| [Setup](docs/setup.md) | Install, configuration variables, shared server, troubleshooting |
-| [Maps search](docs/maps-search.md) | How a search works, what is listed or hidden, limits and speed |
-| [Qualify and ICPs](docs/qualify.md) | How leads are scored, ICP library, current limits |
-| [Architecture](docs/architecture.md) | Code layout, data flow, database tables, scripts |
+| [Setup](docs/setup.md) | Install, configuration, troubleshooting |
+| [Maps search](docs/maps-search.md) | Running a search and reading the results |
+| [Qualify and ICPs](docs/qualify.md) | Scoring leads and managing ICPs |
+| [Architecture](docs/architecture.md) | Code layout and database |
 
 ## Project structure
 
 ```
 RECON/
-├── api-server/          Express API + the Maps and Qualify engines (also serves the built dashboard)
-│   ├── data/            places.json.gz: the area list used for instant suggestions
-│   └── src/
-│       ├── routes/      HTTP routes (/api/maps, /api/qualify, /api/icp, /api/crm, /api/config)
-│       └── lib/
-│           ├── maps/    Google Maps search: areas, grid, crawler, job runner
-│           └── qualify/ Website crawler, scoring (Claude, Gemini, local model, rules), batches
-├── dashboard/           React + Vite web app
-├── lib/
-│   ├── db/              Database schema (Drizzle ORM, PostgreSQL)
-│   └── integrations-gemini-ai/  Optional Gemini client
-├── scripts/             build-gazetteer.mjs (area list), maps-benchmark.mjs (search speed/coverage)
+├── api-server/          API, Maps and Qualify engines (also serves the dashboard)
+├── dashboard/           Web app (React + Vite)
+├── lib/db/              Database schema (Drizzle, PostgreSQL)
+├── lib/integrations-gemini-ai/  Gemini client
+├── scripts/             Maintenance scripts
 ├── docs/                Guides
-└── start-recon.cmd      One-click launcher for Windows
+└── start-recon.cmd      Windows launcher
 ```
 
 ## License

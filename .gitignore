@@ -6,3 +6,6 @@ dist/
 !.env.example
 .neon
 .models/
+
+# Tigapo customer exports: company data, never commit
+data/tigapo/
