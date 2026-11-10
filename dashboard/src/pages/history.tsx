@@ -11,16 +11,16 @@ import { History as HistoryIcon, Loader2, Target, ArrowRight, CheckCircle2, XCir
 function StatusBadge({ status }: { status: string }) {
   switch (status) {
     case "done":
-      return <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/30 border font-mono text-[11px]">DONE</Badge>;
+      return <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/30 border rounded-full font-medium text-xs">Done</Badge>;
     case "running":
-      return <Badge className="bg-blue-500/15 text-blue-400 border-blue-500/30 border font-mono text-[11px] animate-pulse">RUNNING</Badge>;
+      return <Badge className="bg-blue-500/15 text-blue-400 border-blue-500/30 border rounded-full font-medium text-xs animate-pulse">Running</Badge>;
     case "failed":
-      return <Badge className="bg-rose-500/15 text-rose-400 border-rose-500/30 border font-mono text-[11px]">FAILED</Badge>;
+      return <Badge className="bg-rose-500/15 text-rose-400 border-rose-500/30 border rounded-full font-medium text-xs">Failed</Badge>;
     case "cancelled":
-      return <Badge className="bg-amber-500/15 text-amber-400 border-amber-500/30 border font-mono text-[11px]">STOPPED</Badge>;
+      return <Badge className="bg-amber-500/15 text-amber-400 border-amber-500/30 border rounded-full font-medium text-xs">Stopped</Badge>;
     case "pending":
     default:
-      return <Badge variant="outline" className="text-muted-foreground font-mono text-[11px]">PENDING</Badge>;
+      return <Badge variant="outline" className="text-muted-foreground rounded-full font-medium text-xs">Pending</Badge>;
   }
 }
 
@@ -45,7 +45,7 @@ export default function History() {
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <PageHeader
         icon={HistoryIcon}
-        step={3}
+        step={4}
         title="History"
         description="Every qualification, kept. Open one to review its leads and download them. Past searches are on the Maps Search page."
       />
@@ -54,7 +54,7 @@ export default function History() {
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <Target className="h-4 w-4 text-primary" />
-              Qualification Batches
+              Qualifications
             </CardTitle>
           </CardHeader>
           <CardContent>

@@ -26,10 +26,11 @@ import {
   ChevronRight, Loader2, AlertTriangle, CheckCircle2, Download, Trash2,
 } from "lucide-react";
 
-const ALL_FIELDS: MapsField[] = [
-  "address", "phone", "website", "mapsUrl",
-  "rating", "reviewCount", "category", "hours",
-];
+/**
+ * Every search fetches the same fields. Category and address decide which places are kept and
+ * score places without a website; phone and website come from each place page.
+ */
+const SEARCH_FIELDS: MapsField[] = ["address", "phone", "website", "mapsUrl", "rating", "reviewCount", "category"];
 
 const FIELD_ICONS: Record<MapsField, React.ReactNode> = {
   address: <MapPin className="h-3.5 w-3.5" />,
@@ -83,6 +84,24 @@ function estimateTimeLeft(job: MapsJob, remaining: number, inStep2: boolean): st
   return inStep2 ? `${time}+ remaining` : `step 1: ${time} remaining`;
 }
 
+/** One numbered step of the search form. */
+function FormStep({ n, title, hint, children }: { n: number; title: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <section className="space-y-3">
+      <div className="flex items-start gap-3">
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-semibold text-primary ring-1 ring-inset ring-primary/30">
+          {n}
+        </span>
+        <div className="min-w-0">
+          <h2 className="text-[15px] font-semibold leading-6">{title}</h2>
+          {hint && <p className="text-sm text-muted-foreground leading-snug">{hint}</p>}
+        </div>
+      </div>
+      <div className="space-y-2.5">{children}</div>
+    </section>
+  );
+}
+
 function StatusBadge({ status }: { status: MapsJob["status"] }) {
   const map: Record<MapsJob["status"], { label: string; className: string }> = {
     pending: { label: "Starting...", className: "bg-muted/30 text-muted-foreground" },
@@ -93,7 +112,7 @@ function StatusBadge({ status }: { status: MapsJob["status"] }) {
   };
   const v = map[status];
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-semibold ${v.className}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium shrink-0 ${v.className}`}>
       {v.label}
     </span>
   );
@@ -269,7 +288,7 @@ function LeadsTable({
   return (
     <table className="w-full text-xs">
       <thead className="sticky top-0 z-10 bg-background">
-        <tr className="border-b border-muted/30 bg-muted/10">
+        <tr className="border-b border-input bg-background/50">
           <th className="text-left py-2 px-3 font-mono text-muted-foreground whitespace-nowrap">Name</th>
           {cols.map((f) => (
             <th key={f} className="text-left py-2 px-3 font-mono text-muted-foreground whitespace-nowrap">
@@ -291,14 +310,14 @@ function LeadsTable({
                   <td className="py-2 px-3 font-medium whitespace-nowrap max-w-[220px] truncate">
                     <div className="flex items-center gap-1.5">
                       {lead.detailStatus === "running" && (
-                        <span className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono text-blue-400 bg-blue-500/10 border border-blue-500/20">
+                        <span className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-mono text-blue-400 bg-blue-500/10 border border-blue-500/20">
                           <Loader2 className="h-2.5 w-2.5 animate-spin" /> details
                         </span>
                       )}
                       {lead.detailStatus === "failed" && (
                         <span
                           title={lead.detailError ?? "Detail extraction failed"}
-                          className="shrink-0 inline-flex px-1.5 py-0.5 rounded text-[9px] font-mono text-amber-400 bg-amber-500/10 border border-amber-500/20"
+                          className="shrink-0 inline-flex px-1.5 py-0.5 rounded text-xs font-mono text-amber-400 bg-amber-500/10 border border-amber-500/20"
                         >
                           partial
                         </span>
@@ -308,7 +327,7 @@ function LeadsTable({
                   </td>
                   {cols.map((f) => (
                     <td key={f} className="py-2 px-3 text-muted-foreground whitespace-nowrap">
-                      {renderCell(f, lead) ?? <span className="text-muted-foreground/30">—</span>}
+                      {renderCell(f, lead) ?? <span className="text-muted-foreground/70">—</span>}
                     </td>
                   ))}
                   <td className="py-2 px-3 whitespace-nowrap">
@@ -316,7 +335,7 @@ function LeadsTable({
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="h-6 px-2 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted/20 border border-muted/30"
+                        className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/20 border border-white/10"
                         onClick={() => onSendToQualify(lead)}
                         disabled={qualifyingId === lead.id}
                         title={
@@ -473,13 +492,13 @@ function JobProgress({ jobId, onBack }: { jobId: string; onBack: () => void }) {
               {job.completedCells}/{job.totalCells} cells · {shownLeads.length.toLocaleString()} leads found
             </span>
             {leftOut.length > 0 && (
-              <span className="text-[10px] font-mono text-muted-foreground/70 cursor-help" title={leftOutTitle}>
+              <span className="text-xs font-mono text-muted-foreground/70 cursor-help" title={leftOutTitle}>
                 ({leftOut.length} unrelated places left out)
               </span>
             )}
             {failedCells > 0 && (
               <span
-                className="text-[10px] font-mono text-rose-400/80 bg-rose-500/8 border border-rose-500/20 px-1.5 py-0.5 rounded"
+                className="text-xs font-mono text-rose-400/80 bg-rose-500/8 border border-rose-500/20 px-1.5 py-0.5 rounded"
                 title="Google refused these cells even after a retry: rerun the search to cover them"
               >
                 {failedCells} cell{failedCells > 1 ? "s" : ""} failed
@@ -487,7 +506,7 @@ function JobProgress({ jobId, onBack }: { jobId: string; onBack: () => void }) {
             )}
             {mainListReady && job.status !== "done" && (
               <span
-                className="text-[10px] font-mono text-emerald-400/80 bg-emerald-500/8 border border-emerald-500/20 px-1.5 py-0.5 rounded"
+                className="text-xs font-mono text-emerald-400/80 bg-emerald-500/8 border border-emerald-500/20 px-1.5 py-0.5 rounded"
                 title="Your search terms have been searched everywhere, in detail: the list below is nearly complete (about 97% of the places in tests). The remaining cells search related terms for rare places most runs miss; they only add places."
               >
                 main list ready · looking for rare places in {refinementLeft} cell{refinementLeft > 1 ? "s" : ""}
@@ -495,7 +514,7 @@ function JobProgress({ jobId, onBack }: { jobId: string; onBack: () => void }) {
             )}
             {!mainListReady && refinementLeft > 0 && job.status !== "done" && (
               <span
-                className="text-[10px] font-mono text-emerald-400/80 bg-emerald-500/8 border border-emerald-500/20 px-1.5 py-0.5 rounded"
+                className="text-xs font-mono text-emerald-400/80 bg-emerald-500/8 border border-emerald-500/20 px-1.5 py-0.5 rounded"
                 title="Every area has been searched once: the list below is usable now. The busiest areas are being searched again in smaller pieces, which only adds places."
               >
                 quick list ready · refining {refinementLeft} busy cell{refinementLeft > 1 ? "s" : ""}
@@ -503,15 +522,10 @@ function JobProgress({ jobId, onBack }: { jobId: string; onBack: () => void }) {
             )}
             {splitSkippedCells > 0 && (
               <span
-                className="text-[10px] font-mono text-amber-400/80 bg-amber-500/8 border border-amber-500/20 px-1.5 py-0.5 rounded"
+                className="text-xs font-mono text-amber-400/80 bg-amber-500/8 border border-amber-500/20 px-1.5 py-0.5 rounded"
                 title="These cells had a full list of places but the search reached its cell limit, so they were not searched in more detail: places may be missing there. Search those areas separately to cover them."
               >
                 {splitSkippedCells} full cell{splitSkippedCells > 1 ? "s" : ""} not detailed
-              </span>
-            )}
-            {hasDetailFields && (
-              <span className="text-[10px] font-mono text-blue-400/70 bg-blue-500/8 border border-blue-500/20 px-1.5 py-0.5 rounded">
-                deep mode
               </span>
             )}
           </div>
@@ -569,7 +583,7 @@ function JobProgress({ jobId, onBack }: { jobId: string; onBack: () => void }) {
       {(job.status === "running" || job.status === "paused") && (
         <div className="space-y-1.5">
           <Progress value={pct} className="h-2" />
-          <div className="flex justify-between gap-3 text-[11px] text-muted-foreground font-mono">
+          <div className="flex justify-between gap-3 text-xs text-muted-foreground font-mono">
             <span
               title="Step 1 searches every area once: the list is usable when it ends. Step 2 searches the busiest areas again in smaller pieces (cut again while they are still full), so its number of cells grows as it runs. It only adds places."
               className="cursor-help"
@@ -606,8 +620,8 @@ function JobProgress({ jobId, onBack }: { jobId: string; onBack: () => void }) {
             value={detailTotal > 0 ? ((detailDone + detailFailed) / detailTotal) * 100 : 0}
             className="h-1.5"
           />
-          <p className="text-[11px] text-muted-foreground">
-            Leads are available now. Phone, website, and hours continue filling in without blocking the search.
+          <p className="text-xs text-muted-foreground">
+            Leads are available now. Phone and website keep filling in without blocking the search.
           </p>
         </div>
       )}
@@ -636,14 +650,14 @@ function JobProgress({ jobId, onBack }: { jobId: string; onBack: () => void }) {
         return (
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-3 flex-wrap">
-              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider font-mono">
+              <h3 className="text-sm font-semibold text-muted-foreground font-mono">
                 Leads ({shownLeads.length.toLocaleString()})
               </h3>
               <div className="flex items-center gap-3 shrink-0">
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-7 px-3 text-[11px] border-violet-500/30 text-violet-400 hover:bg-violet-500/10"
+                  className="h-7 px-3 text-xs border-violet-500/30 text-violet-400 hover:bg-violet-500/10"
                   onClick={() => qualifyAllMut.mutate()}
                   disabled={qualifyAllMut.isPending}
                   title={[
@@ -664,7 +678,7 @@ function JobProgress({ jobId, onBack }: { jobId: string; onBack: () => void }) {
               </div>
             </div>
 
-            <div className="max-h-[600px] overflow-auto rounded-lg border border-muted/25">
+            <div className="max-h-[600px] overflow-auto rounded-lg border border-white/10">
               <LeadsTable
                 leads={shownLeads}
                 selectedFields={selectedFields}
@@ -731,9 +745,6 @@ export function MapsSearch() {
   /** Grid size of each committed area (by areaKey), from its preview. */
   const [areaCellCounts, setAreaCellCounts] = useState<Record<string, number>>({});
   const [drawnBbox, setDrawnBbox] = useState<import("@/lib/mapsApi").DrawnBbox | null>(null);
-  const [selectedFields, setSelectedFields] = useState<Set<MapsField>>(
-    new Set(["address", "phone", "website", "rating", "reviewCount", "category"]),
-  );
   const [previewCells, setPreviewCells] = useState<GridCell[]>([]);
   const [selectedCellIndices, setSelectedCellIndices] = useState<Set<number>>(new Set());
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -773,7 +784,7 @@ export function MapsSearch() {
         // Text still in the input (not added with Enter) is searched as typed.
         areas: pendingAreas.length > 0 ? pendingAreas : undefined,
         ...(drawnBbox ? { bbox: drawnBbox } : {}),
-        selectedFields: Array.from(selectedFields),
+        selectedFields: SEARCH_FIELDS,
         selectedCellIndices:
           partialSelection && gridCount === 1 ? Array.from(selectedCellIndices) : undefined,
         label: label.trim() || undefined,
@@ -956,16 +967,6 @@ export function MapsSearch() {
     setSelectedCellIndices(new Set());
   }
 
-  function toggleField(f: MapsField) {
-    setSelectedFields((prev) => {
-      const next = new Set(prev);
-      if (next.has(f)) next.delete(f);
-      else next.add(f);
-      return next;
-    });
-  }
-
-  const hasDetailFields = [...selectedFields].some((f) => DETAIL_FIELDS.includes(f));
   const isWorldwide = areas.some((a) => a.label.toLowerCase() === "worldwide" || a.label.toLowerCase() === "world") ||
     areaInput.toLowerCase() === "worldwide" || areaInput.toLowerCase() === "world";
   const totalJobs = 1;
@@ -989,43 +990,88 @@ export function MapsSearch() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* ── Header ───────────────────────────────────────────────────── */}
-      <div>
-        <PageHeader
-          icon={Map}
-          step={1}
-          title="Maps Search"
-          description="Choose an area and what to look for: RECON lists every place of that kind found on Google Maps."
-        />
-        {activeIcp && (
-          <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg border border-primary/20 bg-primary/5 text-xs font-mono">
-            <Target className="h-3.5 w-3.5 text-primary shrink-0" />
-            <span className="text-muted-foreground">ICP:</span>
-            <span className="text-primary font-semibold truncate">{activeIcp.name}</span>
-            <span className="text-muted-foreground/40 ml-auto shrink-0 hidden sm:inline">Pick search terms below · scoring uses this ICP</span>
-          </div>
-        )}
-      </div>
+    <div className="space-y-8">
+      <PageHeader
+        icon={Map}
+        step={2}
+        title="Maps Search"
+        description="Say what to look for and where: RECON lists every place of that kind found on Google Maps."
+      />
 
-      {/* ── Step 1: Area(s) ──────────────────────────────────────────── */}
-      <Card>
-        <CardContent className="pt-5 pb-4">
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-              Areas
-              <span className="text-muted-foreground/40 normal-case font-sans font-normal text-[10px]">
-                press Enter or comma to add multiple
-              </span>
-              {previewLoading && <Loader2 className="h-2.5 w-2.5 animate-spin text-primary ml-1" />}
-              {!previewLoading && previewCells.length > 0 && (
-                <span className="text-primary ml-1">→ {previewCells.length} cells</span>
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,440px)_minmax(0,1fr)] items-start">
+        {/* ── Form: what, where, start ── */}
+        <Card className="lg:sticky lg:top-24">
+          <CardContent className="p-6 space-y-7">
+            <FormStep n={1} title="What to look for" hint="Kinds of places, as you would type them in Google Maps.">
+              
+
+              {/* Pills + input */}
+              <div
+                className="min-h-[38px] w-full rounded-md border border-input bg-background/50 px-2 py-1.5 flex flex-wrap gap-1.5 cursor-text focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/30 transition-colors"
+                onClick={(e) => (e.currentTarget.querySelector("input") as HTMLInputElement | null)?.focus()}
+              >
+                {searchTerms.map((t) => (
+                  <span
+                    key={t}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-primary/15 border border-primary/30 text-primary text-xs font-mono"
+                  >
+                    {t}
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); removeTerm(t); }}
+                      className="hover:text-destructive transition-colors leading-none"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+                <input
+                  type="text"
+                  value={termInput}
+                  onChange={(e) => setTermInput(e.target.value)}
+                  onKeyDown={handleTermKeyDown}
+                  onBlur={() => addTerm(termInput)}
+                  placeholder={searchTerms.length === 0 ? "e.g. dental clinic, bowling alley…" : "Add another…"}
+                  className="flex-1 min-w-[140px] bg-transparent text-sm placeholder:text-muted-foreground/70 focus:outline-none"
+                />
+              </div>
+
+              {/* ICP suggestions */}
+              {activeIcp && extractIcpSearchTerms(activeIcp).length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                  <span className="text-xs text-muted-foreground">Suggested by the active ICP:</span>
+                  {extractIcpSearchTerms(activeIcp).map((term) => (
+                    <button
+                      key={term}
+                      type="button"
+                      onClick={() => (searchTerms.includes(term) ? removeTerm(term) : addTerm(term))}
+                      title={searchTerms.includes(term) ? "Click to remove" : "Click to search this term too"}
+                      className={`px-2 py-0.5 rounded text-xs font-mono border transition-colors ${
+                        searchTerms.includes(term)
+                          ? "bg-primary/15 border-primary/40 text-primary"
+                          : "border-white/10 text-muted-foreground hover:border-primary/30 hover:text-primary/80"
+                      }`}
+                    >
+                      {searchTerms.includes(term) ? "✓ " : "+ "}{term}
+                    </button>
+                  ))}
+                </div>
               )}
-            </label>
+            </FormStep>
+
+            <FormStep n={2} title="Where" hint="A city, region or country. Pick a suggestion for its exact outline, or draw on the map.">
+          <div className="space-y-1.5">
+            <p className="text-xs text-muted-foreground flex items-center gap-1.5 min-h-4">
+              Press Enter or comma to add several.
+              {previewLoading && <Loader2 className="h-3 w-3 animate-spin text-primary" />}
+              {!previewLoading && previewCells.length > 0 && (
+                <span className="text-primary">{previewCells.length} cells on the map</span>
+              )}
+            </p>
 
             {/* Pills + input */}
             <div
-              className="min-h-[38px] w-full rounded-md border border-muted/40 bg-muted/10 px-2 py-1.5 flex flex-wrap gap-1.5 cursor-text focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/30 transition-colors"
+              className="min-h-[38px] w-full rounded-md border border-input bg-background/50 px-2 py-1.5 flex flex-wrap gap-1.5 cursor-text focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/30 transition-colors"
               onClick={(e) => (e.currentTarget.querySelector("input") as HTMLInputElement | null)?.focus()}
             >
               {/* Drawn bbox chip */}
@@ -1069,13 +1115,13 @@ export function MapsSearch() {
                     ? 'Country, region, department, city, district…'
                     : 'Add another area…'
                 }
-                className="flex-1 min-w-[180px] bg-transparent text-sm placeholder:text-muted-foreground/40 focus:outline-none"
+                className="flex-1 min-w-[180px] bg-transparent text-sm placeholder:text-muted-foreground/70 focus:outline-none"
               />
             </div>
             {/* Suggestions (OpenStreetMap): the exact area, outline included */}
             {(suggestions.length > 0 || moreLoading) && (
               <div className="relative">
-                <ul className="absolute z-50 left-0 right-0 mt-1 max-h-72 overflow-auto rounded-md border border-muted/40 bg-background shadow-lg">
+                <ul className="absolute z-50 left-0 right-0 mt-1 max-h-72 overflow-auto rounded-md border border-white/10 bg-background shadow-lg">
                   {suggestions.map((s, i) => (
                     <li
                       key={s.osmId}
@@ -1085,11 +1131,11 @@ export function MapsSearch() {
                       className={`px-3 py-1.5 cursor-pointer text-sm flex items-baseline gap-2 ${i === highlighted ? "bg-primary/15" : ""}`}
                     >
                       <span className="font-medium">{s.name}</span>
-                      <span className="text-[10px] font-mono uppercase text-primary/60">{s.typeLabel ?? AREA_TYPE_LABELS[s.type] ?? s.type}</span>
+                      <span className="text-xs text-primary/80">{s.typeLabel ?? AREA_TYPE_LABELS[s.type] ?? s.type}</span>
                       {s.context && <span className="text-xs text-muted-foreground truncate">{s.context}</span>}
                     </li>
                   ))}
-                  <li className="px-3 py-1 text-[10px] text-muted-foreground/50 border-t border-muted/20 flex items-center gap-2">
+                  <li className="px-3 py-1 text-xs text-muted-foreground/80 border-t border-white/10 flex items-center gap-2">
                     <span>Enter picks the highlighted area · Esc then Enter searches the text as typed</span>
                     {moreLoading && (
                       <span className="inline-flex items-center gap-1 text-primary/60">
@@ -1101,138 +1147,26 @@ export function MapsSearch() {
                 </ul>
               </div>
             )}
-            <p className="text-[10px] font-mono text-muted-foreground/40">
-              {drawnBbox
-                ? `Drawn: ${drawnBbox.minLat.toFixed(2)}°,${drawnBbox.minLng.toFixed(2)}° → ${drawnBbox.maxLat.toFixed(2)}°,${drawnBbox.maxLng.toFixed(2)}°`
-                : 'e.g. "Japan" · "Île-de-France" · "Paris 11e" · "Texas": pick a suggestion to search its exact outline'}
-            </p>
+            {drawnBbox && (
+              <p className="text-xs text-muted-foreground">
+                {`Drawn: ${drawnBbox.minLat.toFixed(2)}°,${drawnBbox.minLng.toFixed(2)}° → ${drawnBbox.maxLat.toFixed(2)}°,${drawnBbox.maxLng.toFixed(2)}°`}
+              </p>
+            )}
           </div>
-        </CardContent>
-      </Card>
+            </FormStep>
 
-      {/* ── Step 2: Map ──────────────────────────────────────────────── */}
-      <MapGridPicker
-        cells={previewCells}
-        selectedIndices={selectedCellIndices}
-        onToggle={(idx) =>
-          setSelectedCellIndices((prev) => {
-            const next = new Set(prev);
-            if (next.has(idx)) next.delete(idx);
-            else next.add(idx);
-            return next;
-          })
-        }
-        onSelectAll={() => setSelectedCellIndices(new Set(previewCells.map((_, i) => i)))}
-        onDeselectAll={() => setSelectedCellIndices(new Set())}
-        onDraw={handleDrawComplete}
-        drawnBbox={drawnBbox}
-        onClearDraw={handleClearDraw}
-        loading={previewLoading}
-        placeholder="Type an area above — or click Draw Area to select on the map"
-      />
-      {cellSelectionIgnored && (
-        <p className="text-xs font-mono text-amber-400 -mt-3">
-          Several areas are searched: every cell of each area will be searched. To search only
-          some cells, search one area at a time.
-        </p>
-      )}
-
-      {/* ── Step 3: Search term + Fields + Launch ────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_290px] gap-6">
-        {/* Search term + warnings + submit */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base font-mono">What to Search</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Search terms tag-input */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-mono text-muted-foreground uppercase tracking-wider flex items-center gap-2">
-                Search Terms
-                <span className="text-muted-foreground/40 normal-case font-sans font-normal text-[10px]">
-                  press Enter or comma to add multiple
-                </span>
-              </label>
-
-              {/* Pills + input */}
-              <div
-                className="min-h-[38px] w-full rounded-md border border-muted/40 bg-muted/10 px-2 py-1.5 flex flex-wrap gap-1.5 cursor-text focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/30 transition-colors"
-                onClick={(e) => (e.currentTarget.querySelector("input") as HTMLInputElement | null)?.focus()}
-              >
-                {searchTerms.map((t) => (
-                  <span
-                    key={t}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-primary/15 border border-primary/30 text-primary text-xs font-mono"
-                  >
-                    {t}
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); removeTerm(t); }}
-                      className="hover:text-destructive transition-colors leading-none"
-                    >
-                      ×
-                    </button>
-                  </span>
-                ))}
-                <input
-                  type="text"
-                  value={termInput}
-                  onChange={(e) => setTermInput(e.target.value)}
-                  onKeyDown={handleTermKeyDown}
-                  onBlur={() => addTerm(termInput)}
-                  placeholder={searchTerms.length === 0 ? "e.g. dental clinic, bowling alley…" : "Add another…"}
-                  className="flex-1 min-w-[140px] bg-transparent text-sm placeholder:text-muted-foreground/40 focus:outline-none"
-                />
-              </div>
-
-              {/* ICP suggestions */}
-              {activeIcp && extractIcpSearchTerms(activeIcp).length > 0 && (
-                <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-                  <span className="text-[10px] font-mono text-muted-foreground/50">ICP suggests:</span>
-                  {extractIcpSearchTerms(activeIcp).map((term) => (
-                    <button
-                      key={term}
-                      type="button"
-                      onClick={() => (searchTerms.includes(term) ? removeTerm(term) : addTerm(term))}
-                      title={searchTerms.includes(term) ? "Click to remove" : "Click to search this term too"}
-                      className={`px-2 py-0.5 rounded text-[10px] font-mono border transition-colors ${
-                        searchTerms.includes(term)
-                          ? "bg-primary/15 border-primary/40 text-primary"
-                          : "border-muted/30 text-muted-foreground hover:border-primary/30 hover:text-primary/80"
-                      }`}
-                    >
-                      {searchTerms.includes(term) ? "✓ " : "+ "}{term}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
+            <FormStep n={3} title="Start">
             {/* Optional label */}
             <div className="space-y-1.5">
-              <label className="text-xs font-mono text-muted-foreground uppercase tracking-wider flex items-center gap-2">
-                Job Label
-                <span className="text-muted-foreground/40 normal-case font-sans font-normal text-[10px]">optional</span>
-              </label>
+              <label className="text-sm font-medium">Name <span className="font-normal text-muted-foreground">(optional)</span></label>
               <input
                 type="text"
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
-                placeholder="e.g. Q3 Vegas Outreach"
-                className="w-full rounded-md border border-muted/40 bg-muted/10 px-3 py-2 text-sm placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30"
+                placeholder="e.g. Lyon bowlings, March"
+                className="w-full rounded-md border border-input bg-background/50 px-3 py-2 text-sm placeholder:text-muted-foreground/70 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30"
               />
             </div>
-
-            {/* Deep mode notice */}
-            {hasDetailFields && (
-              <div className="flex items-start gap-2 text-blue-400/80 text-xs bg-blue-500/8 border border-blue-500/20 rounded-md p-3">
-                <Clock className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-                <span>
-                  <strong>Deep mode active</strong> — Phone, Website, and/or Hours require visiting
-                  each business's detail page. Richer data but slower per cell.
-                </span>
-              </div>
-            )}
 
             {/* Worldwide warning */}
             {isWorldwide && (
@@ -1295,144 +1229,80 @@ export function MapsSearch() {
                 </>
               ) : (
                 <>
-                  <Play className="h-4 w-4 mr-2" /> Start Search
+                  <Play className="h-4 w-4 mr-2" /> Start search
                 </>
               )}
             </Button>
+            </FormStep>
           </CardContent>
         </Card>
 
-        {/* Field selector */}
-        <div className="space-y-4">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-mono">Data Fields</CardTitle>
-              <CardDescription className="text-xs">
-                Choose which fields to extract
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Fast fields — scraped from feed, no extra page visits */}
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-[9px] font-mono font-semibold uppercase tracking-widest text-emerald-400/80">
-                    Instant
-                  </span>
-                  <span className="text-[9px] text-muted-foreground/40 font-mono">
-                    — scraped from feed, no extra page visits
-                  </span>
-                </div>
-                {ALL_FIELDS.filter((f) => !DETAIL_FIELDS.includes(f)).map((f) => (
-                  <label
-                    key={f}
-                    className={`flex items-center gap-2.5 p-2 rounded-md cursor-pointer transition-colors ${
-                      selectedFields.has(f)
-                        ? "bg-primary/10 border border-primary/20"
-                        : "border border-muted/20 hover:border-muted/40"
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedFields.has(f)}
-                      onChange={() => toggleField(f)}
-                      className="accent-primary"
-                    />
-                    <span
-                      className={`text-xs flex items-center gap-1.5 font-mono flex-1 ${
-                        selectedFields.has(f) ? "text-primary" : "text-muted-foreground"
-                      }`}
-                    >
-                      {FIELD_ICONS[f]}
-                      {FIELD_LABELS[f]}
-                    </span>
-                  </label>
-                ))}
-              </div>
+        {/* ── Map ── */}
+        <div className="space-y-3">
+      <MapGridPicker
+        cells={previewCells}
+        selectedIndices={selectedCellIndices}
+        onToggle={(idx) =>
+          setSelectedCellIndices((prev) => {
+            const next = new Set(prev);
+            if (next.has(idx)) next.delete(idx);
+            else next.add(idx);
+            return next;
+          })
+        }
+        onSelectAll={() => setSelectedCellIndices(new Set(previewCells.map((_, i) => i)))}
+        onDeselectAll={() => setSelectedCellIndices(new Set())}
+        onDraw={handleDrawComplete}
+        drawnBbox={drawnBbox}
+        onClearDraw={handleClearDraw}
+        loading={previewLoading}
+        placeholder="Type an area on the left, or draw one on the map"
+        height={560}
+      />
+      {cellSelectionIgnored && (
+        <p className="text-xs font-mono text-amber-400 -mt-3">
+          Several areas are searched: every cell of each area will be searched. To search only
+          some cells, search one area at a time.
+        </p>
+      )}
 
-              {/* Divider */}
-              <div className="border-t border-muted/20" />
-
-              {/* Deep fields — require visiting each business's place page */}
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-[9px] font-mono font-semibold uppercase tracking-widest text-amber-400/80">
-                    Deep
-                  </span>
-                  <span className="text-[9px] text-muted-foreground/40 font-mono">
-                    — visits each place page, slower but richer
-                  </span>
-                </div>
-                {ALL_FIELDS.filter((f) => DETAIL_FIELDS.includes(f)).map((f) => (
-                  <label
-                    key={f}
-                    className={`flex items-center gap-2.5 p-2 rounded-md cursor-pointer transition-colors ${
-                      selectedFields.has(f)
-                        ? "bg-amber-500/10 border border-amber-500/25"
-                        : "border border-muted/20 hover:border-amber-500/20"
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedFields.has(f)}
-                      onChange={() => toggleField(f)}
-                      className="accent-amber-500"
-                    />
-                    <span
-                      className={`text-xs flex items-center gap-1.5 font-mono flex-1 ${
-                        selectedFields.has(f) ? "text-amber-400" : "text-muted-foreground"
-                      }`}
-                    >
-                      {FIELD_ICONS[f]}
-                      {FIELD_LABELS[f]}
-                    </span>
-                  </label>
-                ))}
-                <p className="text-[10px] text-muted-foreground/40 pt-0.5 font-mono">
-                  Business name always included. Deep fields add ~1–2 min per cell.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
         </div>
       </div>
 
-      {/* Recent jobs */}
+      {/* ── Past searches ── */}
       {jobsData && jobsData.jobs.length > 0 && (
-        <div className="space-y-3">
-          <h3 className="text-sm font-mono text-muted-foreground uppercase tracking-wider">
-            Recent Searches
-          </h3>
-          <div className="space-y-2">
-            {jobsData.jobs.slice(0, 8).map((job) => (
-              <button
-                key={job.jobId}
-                onClick={() => setActiveJobId(job.jobId)}
-                className="w-full flex items-center justify-between gap-4 p-3 rounded-lg border border-muted/25 bg-background/40 hover:bg-background/70 transition-colors text-left"
-              >
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold truncate">"{job.config.label || job.config.searchTerm}"</p>
-                  <p className="text-xs text-muted-foreground">
-                    {job.config.scope === "city"
-                      ? job.config.location
-                      : job.config.scope === "country"
-                      ? job.config.location
-                      : job.config.scope === "continent"
-                      ? job.config.location
-                      : "Worldwide"}
-                    {" · "}
-                    {(job.shownLeads ?? job.totalLeads).toLocaleString()} leads
-                    {" · "}
-                    {job.completedCells}/{job.totalCells} cells
-                  </p>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <StatusBadge status={job.status} />
-                  <ChevronRight className="h-4 w-4 text-muted-foreground/40" />
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Your searches</CardTitle>
+            <CardDescription>Open one to see its places, export them or send them to the Lead Qualifier.</CardDescription>
+          </CardHeader>
+          <CardContent className="pb-3">
+            <ul className="divide-y divide-border">
+              {jobsData.jobs.slice(0, 8).map((job) => (
+                <li key={job.jobId}>
+                  <button
+                    onClick={() => setActiveJobId(job.jobId)}
+                    className="group w-full flex items-center gap-4 py-3 text-left"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate group-hover:text-primary transition-colors">
+                        {job.config.label || job.config.searchTerm}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                        {job.config.scope === "worldwide" ? "Worldwide" : job.config.location}
+                      </p>
+                    </div>
+                    <span className="text-sm tabular-nums text-muted-foreground shrink-0">
+                      {(job.shownLeads ?? job.totalLeads).toLocaleString()} {(job.shownLeads ?? job.totalLeads) === 1 ? "place" : "places"}
+                    </span>
+                    <StatusBadge status={job.status} />
+                    <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors shrink-0" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

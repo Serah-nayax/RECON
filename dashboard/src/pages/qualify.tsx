@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PageHeader } from "@/components/page-header";
-import { Link, useSearch } from "wouter";
+import { useSearch } from "wouter";
 import * as XLSX from "xlsx";
 import { useToast } from "@/hooks/use-toast";
 import { qualifyApi, icpApi, crmApi, type LeadInput, type QualifyBatch, type LeadResult, type CrmTarget } from "@/lib/qualifyApi";
@@ -10,10 +10,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import {
-  Loader2, Upload, Play, Download, ChevronDown, ChevronUp,
-  CheckCircle2, XCircle, Clock, Globe, Settings, FileSpreadsheet, ListChecks, BookOpen, Info, Send,
+  Loader2, Play, Download, ChevronDown, ChevronUp,
+  CheckCircle2, XCircle, Clock, Globe, FileSpreadsheet, ListChecks, Info, Send,
   ArrowRight, FileText, Square, RotateCcw, PlusCircle,
-  User, Mail, Phone, ExternalLink, Users, Copy, Check, Star,
+  User, Mail, Phone, ExternalLink, Copy, Check, Star,
 } from "lucide-react";
 
 // ── Inline copy button ────────────────────────────────────────────────────────
@@ -22,7 +22,7 @@ function CopyBtn({ text }: { text: string }) {
   return (
     <button
       onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(text).then(() => { setDone(true); setTimeout(() => setDone(false), 1800); }); }}
-      className="shrink-0 text-muted-foreground/30 hover:text-primary transition-colors"
+      className="shrink-0 text-muted-foreground/70 hover:text-primary transition-colors"
       title="Copy"
     >
       {done ? <Check className="h-2.5 w-2.5 text-emerald-400" /> : <Copy className="h-2.5 w-2.5" />}
@@ -315,7 +315,7 @@ function ColMappingPreview({ summary }: {
   summary: MappingSummary;
 }) {
   return (
-    <div className="rounded-md border border-muted/40 bg-muted/5 p-3 space-y-2">
+    <div className="rounded-md border border-input bg-background/50 p-3 space-y-2">
       <div className="flex items-center gap-2">
         <p className="text-xs font-mono text-muted-foreground flex items-center gap-1.5">
           <Info className="h-3 w-3" /> DETECTED COLUMNS
@@ -329,7 +329,7 @@ function ColMappingPreview({ summary }: {
           </span>
         ))}
         {summary.notesHeaders.length > 0 && (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-muted/30 border border-muted/40 text-xs font-mono text-muted-foreground">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-muted/30 border border-white/10 text-xs font-mono text-muted-foreground">
             notes ← {summary.notesHeaders.join(", ")}
           </span>
         )}
@@ -353,7 +353,7 @@ function ScoreBadge({ score, verdict }: { score: number | null; verdict: string 
   return (
     <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border font-mono font-bold text-sm ${color}`}>
       <span className="text-base">{score}</span>
-      <span className="text-[10px] opacity-70">/100</span>
+      <span className="text-xs opacity-70">/100</span>
     </div>
   );
 }
@@ -366,7 +366,7 @@ function VerdictBadge({ verdict }: { verdict: string | null }) {
     DISQUALIFY: { label: "DISQUALIFY", class: "bg-rose-500/10 text-rose-400 border-rose-500/25" },
   };
   const v = map[verdict] ?? { label: verdict, class: "bg-muted text-muted-foreground border-muted" };
-  return <span className={`inline-flex items-center px-2 py-0.5 rounded border text-[11px] font-mono font-semibold ${v.class}`}>{v.label}</span>;
+  return <span className={`inline-flex items-center px-2 py-0.5 rounded border text-xs font-mono font-semibold ${v.class}`}>{v.label}</span>;
 }
 
 // ── Signal helpers ────────────────────────────────────────────────────────────
@@ -420,7 +420,7 @@ function SigChip({ sig, variant = "auto" }: { sig: string; variant?: "auto" | "m
     ? "bg-violet-500/10 border-violet-500/20 text-violet-400"
     : isPositive
     ? "bg-emerald-500/8 border-emerald-500/20 text-emerald-400"
-    : "bg-muted/30 border-muted/40 text-muted-foreground";
+    : "bg-muted/30 border-white/10 text-muted-foreground";
 
   const icon = isMissing ? "✗" : sigIcon(sig);
   const label = sig.replace(/^⚠\s*/, "");
@@ -428,7 +428,7 @@ function SigChip({ sig, variant = "auto" }: { sig: string; variant?: "auto" | "m
   return (
     <span
       title={label}
-      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-[11px] font-medium max-w-[220px] ${styles}`}
+      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-medium max-w-[220px] ${styles}`}
     >
       <span className="text-[12px] leading-none shrink-0">{icon}</span>
       <span className="truncate">{label}</span>
@@ -494,7 +494,7 @@ function SignalRow({ sig, isMissing = false }: { sig: string; isMissing?: boolea
   return (
     <div className={`flex items-center gap-2 border-l-[3px] ${border} ${bg} px-2.5 py-1.5 rounded-r-md`}>
       <span className="text-[13px] leading-none shrink-0 w-4 text-center">{icon}</span>
-      <span className={`text-[11px] font-medium truncate ${text}`} title={label}>{label}</span>
+      <span className={`text-xs font-medium truncate ${text}`} title={label}>{label}</span>
     </div>
   );
 }
@@ -515,17 +515,17 @@ function CollapsibleSection({
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="border-t border-muted/20 pt-3 space-y-2">
+    <div className="border-t border-white/10 pt-3 space-y-2">
       <button
         onClick={() => setOpen(!open)}
         className="flex items-center justify-between w-full group"
       >
-        <p className={`text-[10px] font-mono uppercase tracking-wider ${labelColor}`}>{label}</p>
+        <p className={`text-xs font-mono ${labelColor}`}>{label}</p>
         <div className="flex items-center gap-1.5">
-          {count !== undefined && <span className="text-[10px] font-mono text-muted-foreground/35 tabular-nums">{count}</span>}
+          {count !== undefined && <span className="text-xs font-mono text-muted-foreground/35 tabular-nums">{count}</span>}
           {open
-            ? <ChevronUp className="h-3 w-3 text-muted-foreground/30 group-hover:text-muted-foreground/60 transition-colors" />
-            : <ChevronDown className="h-3 w-3 text-muted-foreground/30 group-hover:text-muted-foreground/60 transition-colors" />}
+            ? <ChevronUp className="h-3 w-3 text-muted-foreground/70 group-hover:text-muted-foreground/80 transition-colors" />
+            : <ChevronDown className="h-3 w-3 text-muted-foreground/70 group-hover:text-muted-foreground/80 transition-colors" />}
         </div>
       </button>
       {open && children}
@@ -557,7 +557,7 @@ function LeadIntelPanel({ lead }: { lead: LeadResult }) {
     lead.verdict === "DISQUALIFY" ? "bg-rose-500/60" : "bg-amber-500/60";
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-[220px_1fr_260px] gap-px bg-muted/20 rounded-lg overflow-hidden border border-muted/25">
+    <div className="grid grid-cols-1 md:grid-cols-[220px_minmax(0,1fr)_260px] gap-px bg-muted/20 rounded-lg overflow-hidden border border-white/10">
 
       {/* ── Left: Score + profile + analyst note + intel sources ─────────── */}
       <div className="bg-background/70 p-4 flex flex-col gap-3">
@@ -567,15 +567,15 @@ function LeadIntelPanel({ lead }: { lead: LeadResult }) {
           {hasScore && <ScoreArc score={lead.score!} verdict={lead.verdict} />}
           <div className="flex flex-col gap-1.5 pt-1 min-w-0">
             {lead.verdict && (
-              <span className={`inline-flex items-center self-start px-2 py-0.5 rounded border text-[10px] font-mono font-bold tracking-widest ${verdictChip}`}>
+              <span className={`inline-flex items-center self-start px-2 py-0.5 rounded border text-xs font-mono font-bold tracking-widest ${verdictChip}`}>
                 {lead.verdict}
               </span>
             )}
             {lead.input.category && (
-              <span className="text-[11px] text-muted-foreground font-medium truncate">{lead.input.category}</span>
+              <span className="text-xs text-muted-foreground font-medium truncate">{lead.input.category}</span>
             )}
             {(lead.input.city || lead.input.country) && (
-              <span className="text-[11px] text-muted-foreground/60 truncate">
+              <span className="text-xs text-muted-foreground/80 truncate">
                 {[lead.input.city, lead.input.country].filter(Boolean).join(", ")}
               </span>
             )}
@@ -584,9 +584,9 @@ function LeadIntelPanel({ lead }: { lead: LeadResult }) {
 
         {/* Analyst note */}
         {lead.icpExplanation && (
-          <div className="border-t border-muted/20 pt-3">
-            <p className="text-[10px] font-mono text-muted-foreground/45 uppercase tracking-wider mb-1.5">Analyst note</p>
-            <p className="text-[11px] text-muted-foreground/75 leading-relaxed italic line-clamp-5">
+          <div className="border-t border-white/10 pt-3">
+            <p className="text-xs font-mono text-muted-foreground/45 mb-1.5">Analyst note</p>
+            <p className="text-xs text-muted-foreground/75 leading-relaxed italic line-clamp-5">
               "{lead.icpExplanation}"
             </p>
           </div>
@@ -598,20 +598,20 @@ function LeadIntelPanel({ lead }: { lead: LeadResult }) {
             <div className="space-y-1.5">
               {lead.venueIntel.estimatedMachineCount && lead.venueIntel.estimatedMachineCount !== "unknown" && (
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] text-muted-foreground/40 font-mono w-[52px] shrink-0">machines</span>
-                  <span className="text-[11px] font-semibold text-foreground/80">{lead.venueIntel.estimatedMachineCount}</span>
+                  <span className="text-xs text-muted-foreground/70 font-mono w-[52px] shrink-0">machines</span>
+                  <span className="text-xs font-semibold text-foreground/80">{lead.venueIntel.estimatedMachineCount}</span>
                 </div>
               )}
               {lead.venueIntel.paymentSystem && lead.venueIntel.paymentSystem !== "unknown" && (
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] text-muted-foreground/40 font-mono w-[52px] shrink-0">payment</span>
-                  <span className="text-[11px] font-semibold text-foreground/80">{lead.venueIntel.paymentSystem}</span>
+                  <span className="text-xs text-muted-foreground/70 font-mono w-[52px] shrink-0">payment</span>
+                  <span className="text-xs font-semibold text-foreground/80">{lead.venueIntel.paymentSystem}</span>
                 </div>
               )}
               {lead.venueIntel.venueType && lead.venueIntel.venueType !== "unknown" && (
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] text-muted-foreground/40 font-mono w-[52px] shrink-0">type</span>
-                  <span className="text-[11px] font-semibold text-foreground/80">{lead.venueIntel.venueType}</span>
+                  <span className="text-xs text-muted-foreground/70 font-mono w-[52px] shrink-0">type</span>
+                  <span className="text-xs font-semibold text-foreground/80">{lead.venueIntel.venueType}</span>
                 </div>
               )}
             </div>
@@ -625,8 +625,8 @@ function LeadIntelPanel({ lead }: { lead: LeadResult }) {
                 { key: "Chain",       val: lead.venueIntel.isChain },
               ] as const).map(({ key, val }) => (
                 <div key={key} className="flex items-center gap-2">
-                  <span className={`text-[11px] font-mono font-bold leading-none ${val ? "text-emerald-400" : "text-muted-foreground/30"}`}>{val ? "✓" : "✗"}</span>
-                  <span className={`text-[10px] font-mono ${val ? "text-foreground/70" : "text-muted-foreground/30"}`}>
+                  <span className={`text-xs font-mono font-bold leading-none ${val ? "text-emerald-400" : "text-muted-foreground/70"}`}>{val ? "✓" : "✗"}</span>
+                  <span className={`text-xs font-mono ${val ? "text-foreground/70" : "text-muted-foreground/70"}`}>
                     {key}{key === "Chain" && val && lead.venueIntel!.chainName ? `: ${lead.venueIntel!.chainName}` : ""}
                   </span>
                 </div>
@@ -637,9 +637,9 @@ function LeadIntelPanel({ lead }: { lead: LeadResult }) {
 
         {/* Intel sources */}
         {ss && (
-          <div className="border-t border-muted/20 pt-3 mt-auto">
-            <p className="text-[10px] font-mono text-muted-foreground/45 uppercase tracking-wider mb-2">Intel sources</p>
-            <div className="flex items-center gap-1.5 mb-2 text-[11px] text-muted-foreground/60 font-mono">
+          <div className="border-t border-white/10 pt-3 mt-auto">
+            <p className="text-xs font-mono text-muted-foreground/45 mb-2">Intel sources</p>
+            <div className="flex items-center gap-1.5 mb-2 text-xs text-muted-foreground/80 font-mono">
               <FileText className="h-3 w-3 shrink-0" />
               <span>{ss.pages} page{ss.pages !== 1 ? "s" : ""} crawled</span>
             </div>
@@ -647,7 +647,7 @@ function LeadIntelPanel({ lead }: { lead: LeadResult }) {
               <div className="flex flex-wrap gap-1 mb-1.5">
                 {ss.reviews.map((r) => {
                   const label = REVIEW_ICONS[r.platform] ?? r.platform.slice(0, 3).toUpperCase();
-                  const cls = "px-1.5 py-0.5 rounded text-[9px] font-mono font-semibold border bg-blue-500/10 border-blue-500/25 text-blue-400";
+                  const cls = "px-1.5 py-0.5 rounded text-xs font-mono font-semibold border bg-blue-500/10 border-blue-500/25 text-blue-400";
                   return r.url ? (
                     <a key={r.platform} href={r.url} title={r.platform} target="_blank" rel="noopener noreferrer"
                       className={`${cls} cursor-pointer hover:bg-blue-500/20 hover:border-blue-500/40 transition-colors`}>
@@ -665,7 +665,7 @@ function LeadIntelPanel({ lead }: { lead: LeadResult }) {
               <div className="flex flex-wrap gap-1">
                 {ss.socials.map((s) => {
                   const label = SOCIAL_ICONS[s.platform] ?? s.platform.slice(0, 2).toUpperCase();
-                  const cls = "px-1.5 py-0.5 rounded text-[9px] font-mono font-semibold border bg-violet-500/10 border-violet-500/25 text-violet-400";
+                  const cls = "px-1.5 py-0.5 rounded text-xs font-mono font-semibold border bg-violet-500/10 border-violet-500/25 text-violet-400";
                   return s.url ? (
                     <a key={s.platform} href={s.url} title={s.platform} target="_blank" rel="noopener noreferrer"
                       className={`${cls} cursor-pointer hover:bg-violet-500/20 hover:border-violet-500/40 transition-colors`}>
@@ -688,8 +688,8 @@ function LeadIntelPanel({ lead }: { lead: LeadResult }) {
         {lead.keySignals.length > 0 && (
           <div className={lead.missingSignals.length > 0 ? "mb-4" : ""}>
             <div className="flex items-center justify-between mb-2">
-              <p className="text-[10px] font-mono text-emerald-500/80 uppercase tracking-wider">Signals found</p>
-              <span className="text-[10px] font-mono text-muted-foreground/40 tabular-nums">{lead.keySignals.length}</span>
+              <p className="text-xs font-mono text-emerald-500/80">Signals found</p>
+              <span className="text-xs font-mono text-muted-foreground/70 tabular-nums">{lead.keySignals.length}</span>
             </div>
             <div className="flex flex-col gap-1">
               {lead.keySignals.map((s, i) => <SignalRow key={i} sig={s} />)}
@@ -700,8 +700,8 @@ function LeadIntelPanel({ lead }: { lead: LeadResult }) {
         {lead.missingSignals.length > 0 && (
           <div className={lead.keySignals.length > 0 ? "border-t border-muted/15 pt-4" : ""}>
             <div className="flex items-center justify-between mb-2">
-              <p className="text-[10px] font-mono text-rose-400/70 uppercase tracking-wider">Gaps identified</p>
-              <span className="text-[10px] font-mono text-muted-foreground/40 tabular-nums">{lead.missingSignals.length}</span>
+              <p className="text-xs font-mono text-rose-400/70">Gaps identified</p>
+              <span className="text-xs font-mono text-muted-foreground/70 tabular-nums">{lead.missingSignals.length}</span>
             </div>
             <div className="flex flex-col gap-1">
               {lead.missingSignals.map((s, i) => <SignalRow key={i} sig={s} isMissing />)}
@@ -710,7 +710,7 @@ function LeadIntelPanel({ lead }: { lead: LeadResult }) {
         )}
 
         {lead.keySignals.length === 0 && lead.missingSignals.length === 0 && (
-          <p className="text-xs text-muted-foreground/40 italic">No signals extracted.</p>
+          <p className="text-xs text-muted-foreground/70 italic">No signals extracted.</p>
         )}
 
         {/* Pain points — collapsible */}
@@ -725,7 +725,7 @@ function LeadIntelPanel({ lead }: { lead: LeadResult }) {
               {(lead.painPoints ?? []).map((pp, i) => (
                 <div key={i} className="flex items-center gap-2 border-l-[3px] border-l-orange-500/50 bg-orange-500/5 px-2.5 py-1.5 rounded-r-md">
                   <span className="text-[13px] leading-none shrink-0 w-4 text-center">⚡</span>
-                  <span className="text-[11px] font-medium truncate text-orange-300/80" title={pp}>{pp}</span>
+                  <span className="text-xs font-medium truncate text-orange-300/80" title={pp}>{pp}</span>
                 </div>
               ))}
             </div>
@@ -735,7 +735,7 @@ function LeadIntelPanel({ lead }: { lead: LeadResult }) {
         {/* Coverage summary */}
         {totalSigs > 0 && (
           <div className="mt-4 pt-3 border-t border-muted/15">
-            <p className="text-[10px] font-mono text-muted-foreground/35 tabular-nums">
+            <p className="text-xs font-mono text-muted-foreground/35 tabular-nums">
               {lead.keySignals.length} signals found · {lead.missingSignals.length} gap{lead.missingSignals.length !== 1 ? "s" : ""}
             </p>
           </div>
@@ -746,12 +746,12 @@ function LeadIntelPanel({ lead }: { lead: LeadResult }) {
       <div className="bg-background/70 p-4 flex flex-col gap-4">
 
         {/* Next action card */}
-        <div className={`rounded-md border p-3 flex flex-col gap-2.5 flex-1 ${lead.recommendedAction ? verdictBorder : "border-muted/20 bg-muted/5"}`}>
+        <div className={`rounded-md border p-3 flex flex-col gap-2.5 flex-1 ${lead.recommendedAction ? verdictBorder : "border-input bg-background/50"}`}>
           <div className="flex items-center gap-1.5">
-            <ArrowRight className={`h-3.5 w-3.5 shrink-0 ${lead.recommendedAction ? verdictText : "text-muted-foreground/40"}`} />
-            <p className="text-[10px] font-mono uppercase tracking-wider font-semibold text-muted-foreground/50">Next action</p>
+            <ArrowRight className={`h-3.5 w-3.5 shrink-0 ${lead.recommendedAction ? verdictText : "text-muted-foreground/70"}`} />
+            <p className="text-xs font-mono font-semibold text-muted-foreground/80">Next action</p>
           </div>
-          <p className={`text-[12px] font-medium leading-relaxed ${lead.recommendedAction ? verdictText : "text-muted-foreground/40 italic"}`}>
+          <p className={`text-[12px] font-medium leading-relaxed ${lead.recommendedAction ? verdictText : "text-muted-foreground/70 italic"}`}>
             {lead.recommendedAction || "No action available."}
           </p>
         </div>
@@ -762,26 +762,26 @@ function LeadIntelPanel({ lead }: { lead: LeadResult }) {
             <div className="space-y-2.5">
               {lead.outreachIntel.pitchAngle && (
                 <div>
-                  <p className="text-[9px] font-mono text-muted-foreground/35 uppercase tracking-wider mb-1">Pitch angle</p>
-                  <p className="text-[11px] text-sky-300/80 leading-relaxed">{lead.outreachIntel.pitchAngle}</p>
+                  <p className="text-xs font-mono text-muted-foreground/35 mb-1">Pitch angle</p>
+                  <p className="text-xs text-sky-300/80 leading-relaxed">{lead.outreachIntel.pitchAngle}</p>
                 </div>
               )}
               {lead.outreachIntel.openingHook && (
                 <div>
-                  <p className="text-[9px] font-mono text-muted-foreground/35 uppercase tracking-wider mb-1">Opening hook</p>
-                  <p className="text-[11px] text-violet-300/80 leading-relaxed italic">"{lead.outreachIntel.openingHook}"</p>
+                  <p className="text-xs font-mono text-muted-foreground/35 mb-1">Opening hook</p>
+                  <p className="text-xs text-violet-300/80 leading-relaxed italic">"{lead.outreachIntel.openingHook}"</p>
                 </div>
               )}
               {lead.outreachIntel.competitorSystem && (
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[9px] font-mono text-muted-foreground/35 w-[56px] shrink-0">competitor</span>
-                  <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-rose-500/10 border border-rose-500/20 text-rose-400">{lead.outreachIntel.competitorSystem}</span>
+                  <span className="text-xs font-mono text-muted-foreground/35 w-[56px] shrink-0">competitor</span>
+                  <span className="px-1.5 py-0.5 rounded text-xs font-mono bg-rose-500/10 border border-rose-500/20 text-rose-400">{lead.outreachIntel.competitorSystem}</span>
                 </div>
               )}
               {lead.competitorAnalysis?.competitiveAngle && (
                 <div className="flex items-start gap-1.5">
-                  <span className="text-[9px] font-mono text-muted-foreground/35 w-[56px] shrink-0 pt-0.5">angle</span>
-                  <p className="text-[10px] text-rose-300/70 leading-relaxed italic">{lead.competitorAnalysis.competitiveAngle}</p>
+                  <span className="text-xs font-mono text-muted-foreground/35 w-[56px] shrink-0 pt-0.5">angle</span>
+                  <p className="text-xs text-rose-300/70 leading-relaxed italic">{lead.competitorAnalysis.competitiveAngle}</p>
                 </div>
               )}
             </div>
@@ -801,22 +801,22 @@ function LeadIntelPanel({ lead }: { lead: LeadResult }) {
                 <div key={i} className="rounded-md border border-emerald-500/15 bg-emerald-500/5 px-2.5 py-2 space-y-1">
                   <div className="flex items-center gap-1.5">
                     <User className="h-3 w-3 shrink-0 text-emerald-400/60" />
-                    <span className="text-[11px] font-semibold text-foreground/85 truncate">{dm.name}</span>
+                    <span className="text-xs font-semibold text-foreground/85 truncate">{dm.name}</span>
                   </div>
                   {dm.title && (
-                    <p className="text-[10px] text-muted-foreground/60 font-mono pl-[18px] truncate">{dm.title}</p>
+                    <p className="text-xs text-muted-foreground/80 font-mono pl-[18px] truncate">{dm.title}</p>
                   )}
                   {dm.email && (
                     <div className="flex items-center gap-1 pl-[18px]">
-                      <Mail className="h-2.5 w-2.5 shrink-0 text-muted-foreground/40" />
-                      <a href={`mailto:${dm.email}`} className="text-[10px] text-sky-400/80 hover:text-sky-400 truncate transition-colors flex-1">{dm.email}</a>
+                      <Mail className="h-2.5 w-2.5 shrink-0 text-muted-foreground/70" />
+                      <a href={`mailto:${dm.email}`} className="text-xs text-sky-400/80 hover:text-sky-400 truncate transition-colors flex-1">{dm.email}</a>
                       <CopyBtn text={dm.email} />
                     </div>
                   )}
                   {dm.phone && (
                     <div className="flex items-center gap-1 pl-[18px]">
-                      <Phone className="h-2.5 w-2.5 shrink-0 text-muted-foreground/40" />
-                      <span className="text-[10px] font-mono text-muted-foreground/70 flex-1">{dm.phone}</span>
+                      <Phone className="h-2.5 w-2.5 shrink-0 text-muted-foreground/70" />
+                      <span className="text-xs font-mono text-muted-foreground/70 flex-1">{dm.phone}</span>
                       <CopyBtn text={dm.phone} />
                     </div>
                   )}
@@ -839,30 +839,30 @@ function LeadIntelPanel({ lead }: { lead: LeadResult }) {
                 <div key={i} className="rounded-md border border-violet-500/15 bg-violet-500/5 px-2.5 py-2 space-y-1">
                   <div className="flex items-center justify-between gap-1">
                     <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] font-mono font-semibold text-violet-400/80">{SOCIAL_ICONS[sp.platform] ?? sp.platform.slice(0, 2).toUpperCase()}</span>
-                      <span className="text-[10px] font-medium text-foreground/70">{sp.platform}</span>
+                      <span className="text-xs font-mono font-semibold text-violet-400/80">{SOCIAL_ICONS[sp.platform] ?? sp.platform.slice(0, 2).toUpperCase()}</span>
+                      <span className="text-xs font-medium text-foreground/70">{sp.platform}</span>
                     </div>
                     <div className="flex items-center gap-1.5">
                       {sp.followers && (
-                        <span className="text-[9px] font-mono text-muted-foreground/50 tabular-nums">{sp.followers}</span>
+                        <span className="text-xs font-mono text-muted-foreground/80 tabular-nums">{sp.followers}</span>
                       )}
                       {sp.url && (
-                        <a href={sp.url} target="_blank" rel="noopener noreferrer" className="text-muted-foreground/30 hover:text-violet-400/70 transition-colors">
+                        <a href={sp.url} target="_blank" rel="noopener noreferrer" className="text-muted-foreground/70 hover:text-violet-400/70 transition-colors">
                           <ExternalLink className="h-2.5 w-2.5" />
                         </a>
                       )}
                     </div>
                   </div>
                   {sp.bio && (
-                    <p className="text-[10px] text-muted-foreground/60 leading-relaxed line-clamp-2 italic">"{sp.bio}"</p>
+                    <p className="text-xs text-muted-foreground/80 leading-relaxed line-clamp-2 italic">"{sp.bio}"</p>
                   )}
                   {sp.postTone && (
-                    <p className="text-[9px] text-muted-foreground/40 font-mono">tone: {sp.postTone}</p>
+                    <p className="text-xs text-muted-foreground/70 font-mono">tone: {sp.postTone}</p>
                   )}
                   {sp.categoryTags && sp.categoryTags.length > 0 && (
                     <div className="flex flex-wrap gap-1 pt-0.5">
                       {sp.categoryTags.slice(0, 3).map((tag, j) => (
-                        <span key={j} className="px-1 py-0.5 rounded text-[9px] font-mono bg-violet-500/10 border border-violet-500/20 text-violet-400/70">{tag}</span>
+                        <span key={j} className="px-1 py-0.5 rounded text-xs font-mono bg-violet-500/10 border border-violet-500/20 text-violet-400/70">{tag}</span>
                       ))}
                     </div>
                   )}
@@ -889,7 +889,7 @@ function LeadIntelPanel({ lead }: { lead: LeadResult }) {
                   s === "Mixed"     ? "bg-amber-500/10 border-amber-500/25 text-amber-400" :
                                       "bg-rose-500/10 border-rose-500/25 text-rose-400";
                 return (
-                  <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[9px] font-mono font-semibold ${cls}`}>
+                  <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-xs font-mono font-semibold ${cls}`}>
                     <Star className="h-2.5 w-2.5" /> {s}
                   </span>
                 );
@@ -897,18 +897,18 @@ function LeadIntelPanel({ lead }: { lead: LeadResult }) {
               {/* Top 2 strengths */}
               {lead.reviewAnalysis.strengths.slice(0, 2).map((s, i) => (
                 <div key={i} className="border-l-[3px] border-l-emerald-500/40 bg-emerald-500/5 px-2 py-1 rounded-r-md">
-                  <p className="text-[10px] font-medium text-emerald-300/80 truncate" title={s.summary}>✓ {s.summary}</p>
+                  <p className="text-xs font-medium text-emerald-300/80 truncate" title={s.summary}>✓ {s.summary}</p>
                   {s.quote && (
-                    <p className="text-[9px] text-muted-foreground/50 italic truncate">"{s.quote}"</p>
+                    <p className="text-xs text-muted-foreground/80 italic truncate">"{s.quote}"</p>
                   )}
                 </div>
               ))}
               {/* Top 1 weakness */}
               {lead.reviewAnalysis.weaknesses.slice(0, 1).map((w, i) => (
                 <div key={i} className="border-l-[3px] border-l-rose-500/40 bg-rose-500/5 px-2 py-1 rounded-r-md">
-                  <p className="text-[10px] font-medium text-rose-400/80 truncate" title={w.summary}>⚠ {w.summary}</p>
+                  <p className="text-xs font-medium text-rose-400/80 truncate" title={w.summary}>⚠ {w.summary}</p>
                   {w.quote && (
-                    <p className="text-[9px] text-muted-foreground/50 italic truncate">"{w.quote}"</p>
+                    <p className="text-xs text-muted-foreground/80 italic truncate">"{w.quote}"</p>
                   )}
                 </div>
               ))}
@@ -918,17 +918,17 @@ function LeadIntelPanel({ lead }: { lead: LeadResult }) {
 
         {/* Signal coverage bar */}
         {totalSigs > 0 && (
-          <div className="border-t border-muted/20 pt-3 mt-auto">
+          <div className="border-t border-white/10 pt-3 mt-auto">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-[10px] font-mono text-muted-foreground/45 uppercase tracking-wider">Signal coverage</p>
-              <span className="text-[10px] font-mono text-muted-foreground/45 tabular-nums">{coveragePct}%</span>
+              <p className="text-xs font-mono text-muted-foreground/45">Signal coverage</p>
+              <span className="text-xs font-mono text-muted-foreground/45 tabular-nums">{coveragePct}%</span>
             </div>
             <div className="h-1.5 rounded-full bg-muted/20 overflow-hidden mb-2">
               <div className={`h-full rounded-full ${coverageBar}`} style={{ width: `${coveragePct}%` }} />
             </div>
             <div className="flex justify-between">
-              <span className="text-[9px] text-muted-foreground/35 font-mono">{lead.keySignals.length} found</span>
-              <span className="text-[9px] text-muted-foreground/35 font-mono">{lead.missingSignals.length} gaps</span>
+              <span className="text-xs text-muted-foreground/35 font-mono">{lead.keySignals.length} found</span>
+              <span className="text-xs text-muted-foreground/35 font-mono">{lead.missingSignals.length} gaps</span>
             </div>
           </div>
         )}
@@ -989,7 +989,7 @@ function LeadRow({
 
   return (
     <>
-      <tr className="border-b border-muted/40 hover:bg-muted/10 cursor-pointer transition-colors" onClick={() => setExpanded(!expanded)}>
+      <tr className="border-b border-white/10 hover:bg-muted/10 cursor-pointer transition-colors" onClick={() => setExpanded(!expanded)}>
         <td className="py-3 px-4">
           <div className="flex items-center gap-2">
             <StatusIcon status={lead.status} error={lead.error} />
@@ -1006,7 +1006,7 @@ function LeadRow({
                 <div className="flex flex-wrap gap-1 mt-1.5">
                   {previewSigs.map((s, i) => <SigChip key={i} sig={s} />)}
                   {extraCount > 0 && (
-                    <span className="text-[11px] text-muted-foreground self-center">+{extraCount} more</span>
+                    <span className="text-xs text-muted-foreground self-center">+{extraCount} more</span>
                   )}
                 </div>
               )}
@@ -1014,7 +1014,7 @@ function LeadRow({
               {isDone && (
                 <div className="flex flex-wrap items-center gap-1 mt-1.5" onClick={(e) => e.stopPropagation()}>
                   {(lead.painPoints ?? []).length > 0 && (
-                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-mono bg-orange-500/10 border border-orange-500/20 text-orange-400">
+                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs font-mono bg-orange-500/10 border border-orange-500/20 text-orange-400">
                       ⚡ {(lead.painPoints ?? []).length} pain point{(lead.painPoints ?? []).length !== 1 ? "s" : ""}
                     </span>
                   )}
@@ -1022,11 +1022,11 @@ function LeadRow({
                     r.url
                       ? <a key={r.platform} href={r.url} target="_blank" rel="noopener noreferrer"
                           title={r.platform}
-                          className="px-1.5 py-0.5 rounded text-[9px] font-mono font-semibold border bg-blue-500/10 border-blue-500/25 text-blue-400 hover:bg-blue-500/20 transition-colors">
+                          className="px-1.5 py-0.5 rounded text-xs font-mono font-semibold border bg-blue-500/10 border-blue-500/25 text-blue-400 hover:bg-blue-500/20 transition-colors">
                           {REVIEW_ICONS[r.platform] ?? r.platform.slice(0,3).toUpperCase()}
                         </a>
                       : <span key={r.platform} title={r.platform}
-                          className="px-1.5 py-0.5 rounded text-[9px] font-mono font-semibold border bg-blue-500/10 border-blue-500/25 text-blue-400">
+                          className="px-1.5 py-0.5 rounded text-xs font-mono font-semibold border bg-blue-500/10 border-blue-500/25 text-blue-400">
                           {REVIEW_ICONS[r.platform] ?? r.platform.slice(0,3).toUpperCase()}
                         </span>
                   ))}
@@ -1034,11 +1034,11 @@ function LeadRow({
                     s.url
                       ? <a key={s.platform} href={s.url} target="_blank" rel="noopener noreferrer"
                           title={s.platform}
-                          className="px-1.5 py-0.5 rounded text-[9px] font-mono font-semibold border bg-violet-500/10 border-violet-500/25 text-violet-400 hover:bg-violet-500/20 transition-colors">
+                          className="px-1.5 py-0.5 rounded text-xs font-mono font-semibold border bg-violet-500/10 border-violet-500/25 text-violet-400 hover:bg-violet-500/20 transition-colors">
                           {SOCIAL_ICONS[s.platform] ?? s.platform.slice(0,2).toUpperCase()}
                         </a>
                       : <span key={s.platform} title={s.platform}
-                          className="px-1.5 py-0.5 rounded text-[9px] font-mono font-semibold border bg-violet-500/10 border-violet-500/25 text-violet-400">
+                          className="px-1.5 py-0.5 rounded text-xs font-mono font-semibold border bg-violet-500/10 border-violet-500/25 text-violet-400">
                           {SOCIAL_ICONS[s.platform] ?? s.platform.slice(0,2).toUpperCase()}
                         </span>
                   ))}
@@ -1063,7 +1063,7 @@ function LeadRow({
                 onClick={handlePush}
                 disabled={pushStatus === "pushing" || pushStatus === "done"}
                 title={pushStatus === "done" ? `Pushed to ${crmLabel}` : `Push to ${crmLabel}`}
-                className={`inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-mono transition-colors
+                className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-mono transition-colors
                   ${pushStatus === "done"
                     ? "bg-emerald-500/15 text-emerald-400 cursor-default"
                     : pushStatus === "error"
@@ -1080,20 +1080,20 @@ function LeadRow({
                 ) : (
                   <Send className="h-3 w-3" />
                 )}
-                {pushStatus === "done" ? "Pushed" : pushStatus === "error" ? "RETRY" : "PUSH"}
+                {pushStatus === "done" ? "Pushed" : pushStatus === "error" ? "Retry" : "Push"}
               </button>
             )}
             {isDone && (
               <button
                 onClick={() => setExpanded(!expanded)}
-                className={`inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-mono transition-colors
+                className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-mono transition-colors
                   ${expanded
                     ? "bg-primary/15 text-primary border border-primary/30"
                     : "bg-muted/20 text-muted-foreground hover:bg-primary/10 hover:text-primary border border-transparent"
                   }`}
               >
                 {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                INTEL
+                Details
               </button>
             )}
             {!isDone && (
@@ -1103,7 +1103,7 @@ function LeadRow({
         </td>
       </tr>
       {expanded && (
-        <tr className="border-b border-muted/40">
+        <tr className="border-b border-white/10">
           <td colSpan={6} className="px-4 py-3 bg-muted/5">
             <LeadIntelPanel lead={lead} />
           </td>
@@ -1287,6 +1287,9 @@ export function Qualify() {
 
   const isDone = batch?.status === "done" || batch?.status === "failed" || batch?.status === "cancelled";
   const isStopped = batch?.status === "cancelled";
+  /** Every lead has its final result: only then can the batch be exported, so a file is never half empty. */
+  const isFinished =
+    batch?.status === "done" && batch.leads.every((l) => l.status === "done" || l.status === "failed");
   const progress = batch ? Math.round((batch.completedCount / batch.totalCount) * 100) : 0;
   const qualifyCount    = batch?.leads.filter((l) => l.verdict === "QUALIFY").length    ?? 0;
   const borderlineCount = batch?.leads.filter((l) => l.verdict === "BORDERLINE").length ?? 0;
@@ -1317,36 +1320,28 @@ export function Qualify() {
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <PageHeader
         icon={ListChecks}
-        step={2}
+        step={3}
         title="Lead Qualifier"
         description={<>RECON reads each lead’s website and scores it from 0 to 100 against the active ICP{icp && <>: <span className="text-foreground font-medium">{icp.name}</span></>}.</>}
-        actions={
-          <Link href="/icp">
-            <Button variant="outline" size="sm">
-              <BookOpen className="h-4 w-4" /> Change ICP
-            </Button>
-          </Link>
-        }
       />
 
       {!activeBatchId && (
-        <div className="grid md:grid-cols-2 gap-4">
-          {/* Upload panel */}
-          <Card>
+        <Card>
             <CardHeader>
-              <div className="flex gap-2 mb-1">
+              <CardTitle className="text-lg">Add the leads to score</CardTitle>
+              <CardDescription>
+                From a Maps search, open the search and click <span className="text-foreground">Qualify All</span>. Or upload a CSV or Excel file, or paste a list: the columns (name, website, city…) are detected automatically.
+              </CardDescription>
+              <div className="flex gap-1 pt-3">
                 <button
-                  className={`text-xs font-mono px-3 py-1 rounded ${inputMode === "file" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
+                  className={`text-sm px-3 py-1.5 rounded-lg transition-colors ${inputMode === "file" ? "bg-primary/15 text-primary font-medium" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}
                   onClick={() => setInputMode("file")}
                 >Upload a file</button>
                 <button
-                  className={`text-xs font-mono px-3 py-1 rounded ${inputMode === "paste" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
+                  className={`text-sm px-3 py-1.5 rounded-lg transition-colors ${inputMode === "paste" ? "bg-primary/15 text-primary font-medium" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}
                   onClick={() => setInputMode("paste")}
                 >Paste a list</button>
               </div>
-              <CardDescription>
-                Any column layout — headers are detected automatically. Supports CSV, Excel (.xlsx/.xls), and tab-separated files.
-              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               {inputMode === "file" ? (
@@ -1358,7 +1353,7 @@ export function Qualify() {
                 >
                   <FileSpreadsheet className="h-8 w-8 mx-auto mb-3 text-muted-foreground" />
                   <p className="text-sm text-muted-foreground">Drop a CSV or Excel file here, or click to browse</p>
-                  <p className="text-xs text-muted-foreground/60 mt-1">.csv · .xlsx · .xls · .ods · .txt — any column layout</p>
+                  <p className="text-xs text-muted-foreground/80 mt-1">.csv · .xlsx · .xls · .ods · .txt</p>
                   <input
                     ref={fileRef}
                     type="file"
@@ -1375,8 +1370,8 @@ export function Qualify() {
                     placeholder={"name,url,category,city\nAcme Arcade,https://acmearcade.com,FEC,Chicago\nFun Zone,https://funzone.com,Barcade,Austin"}
                     className="w-full h-36 bg-background/50 border border-muted rounded-md px-3 py-2 text-xs font-mono resize-none focus:outline-none focus:border-primary"
                   />
-                  <Button variant="outline" size="sm" className="w-full font-mono text-xs" onClick={handlePaste}>
-                    PARSE CSV
+                  <Button variant="outline" size="sm" className="w-full" onClick={handlePaste}>
+                    Read the list
                   </Button>
                 </div>
               )}
@@ -1395,7 +1390,7 @@ export function Qualify() {
                       <option key={s} value={s}>{s}</option>
                     ))}
                   </select>
-                  <span className="text-[10px] font-mono text-muted-foreground/50 shrink-0">{parsed.sheetNames.length} sheets</span>
+                  <span className="text-xs font-mono text-muted-foreground/80 shrink-0">{parsed.sheetNames.length} sheets</span>
                 </div>
               )}
 
@@ -1403,38 +1398,28 @@ export function Qualify() {
               {parsed && (
                 <ColMappingPreview summary={parsed.summary} />
               )}
-            </CardContent>
-          </Card>
-
-          {/* Loaded leads panel */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Loaded Leads</CardTitle>
-              <CardDescription>{leads.length} lead{leads.length !== 1 ? "s" : ""} ready for qualification</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {leads.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground border border-dashed border-muted rounded-lg">
-                  <Upload className="h-6 w-6 mx-auto mb-2 opacity-40" />
-                  <p className="text-sm font-medium">No leads yet</p>
-                  <p className="text-xs mt-1">Upload a file, or send places from a Maps search</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <div className="rounded-md border border-muted/50 overflow-hidden max-h-[220px] overflow-y-auto">
+              {leads.length > 0 && (
+                <div className="space-y-3 pt-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium">{leads.length} lead{leads.length !== 1 ? "s" : ""} loaded</p>
+                    <button className="text-xs text-muted-foreground hover:text-foreground" onClick={() => { setLeads([]); setParsed(null); setWorkbook(null); setPasteText(""); }}>
+                      Clear
+                    </button>
+                  </div>
+                  <div className="rounded-md border border-white/10 overflow-hidden max-h-[220px] overflow-y-auto">
                     <table className="w-full text-xs">
                       <thead className="bg-muted/20 sticky top-0">
                         <tr>
-                          <th className="text-left px-3 py-2 font-mono text-muted-foreground">NAME</th>
-                          <th className="text-left px-3 py-2 font-mono text-muted-foreground">URL</th>
+                          <th className="text-left px-3 py-2 font-medium text-muted-foreground">Name</th>
+                          <th className="text-left px-3 py-2 font-medium text-muted-foreground">Website</th>
                         </tr>
                       </thead>
                       <tbody>
                         {leads.map((l, i) => (
-                          <tr key={i} className="border-t border-muted/30">
+                          <tr key={i} className="border-t border-white/10">
                             <td className="px-3 py-2">{l.name}</td>
                             <td className="px-3 py-2 text-muted-foreground truncate max-w-[160px]">
-                              {l.url ? l.url.replace(/^https?:\/\/(www\.)?/, "") : <span className="text-muted-foreground/40 italic">no url</span>}
+                              {l.url ? l.url.replace(/^https?:\/\/(www\.)?/, "") : <span className="text-muted-foreground/70 italic">none</span>}
                             </td>
                           </tr>
                         ))}
@@ -1442,23 +1427,22 @@ export function Qualify() {
                     </table>
                   </div>
                   {parsed?.summary.colMap.url === -1 && parsed?.summary.colMap.name === -1 && (
-                    <p className="text-xs text-rose-400 text-center font-mono">
+                    <p className="text-xs text-rose-400 text-center">
                       ✕ Cannot qualify — no name or website column found. Check file headers or try a different sheet.
                     </p>
                   )}
                   <Button
-                    className="w-full font-mono font-bold"
+                    className="w-full"
                     onClick={() => submitMutation.mutate(leads)}
                     disabled={submitMutation.isPending || leads.length === 0 || (parsed?.summary.colMap.url === -1 && parsed?.summary.colMap.name === -1)}
                   >
                     {submitMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
-                    QUALIFY {leads.length} LEADS
+                    Qualify {leads.length} lead{leads.length !== 1 ? "s" : ""}
                   </Button>
                 </div>
               )}
             </CardContent>
           </Card>
-        </div>
       )}
 
       {/* Results */}
@@ -1479,7 +1463,7 @@ export function Qualify() {
                     </p>
                     <p className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
                       <span>{batch.completedCount} / {batch.totalCount} processed</span>
-                      {batch.icpSnapshot && <span className="text-primary">[ {batch.icpSnapshot} ]</span>}
+                      {batch.icpSnapshot && <span className="text-primary">ICP: {batch.icpSnapshot}</span>}
                       {!isDone && (
                         <span className="font-mono tabular-nums text-amber-400/80 flex items-center gap-1">
                           <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
@@ -1487,7 +1471,7 @@ export function Qualify() {
                         </span>
                       )}
                       {isDone && elapsedSeconds > 0 && (
-                        <span className="font-mono tabular-nums text-muted-foreground/50">
+                        <span className="font-mono tabular-nums text-muted-foreground/80">
                           in {formatElapsed(elapsedSeconds)}
                         </span>
                       )}
@@ -1511,10 +1495,10 @@ export function Qualify() {
                     </Button>
                   )}
                   {/* CRM picker */}
-                  <div className="flex rounded-md border border-muted/50 overflow-hidden text-xs font-mono">
+                  <div className="flex rounded-md border border-white/10 overflow-hidden text-xs font-mono">
                     <button
                       onClick={() => { setSelectedCrm("hubspot"); setBulkPushStatus("idle"); }}
-                      className={`px-2.5 py-1 transition-colors ${selectedCrm === "hubspot" ? "bg-orange-500/20 text-orange-300 border-r border-muted/50" : "text-muted-foreground hover:bg-muted/20 border-r border-muted/50"}`}
+                      className={`px-2.5 py-1 transition-colors ${selectedCrm === "hubspot" ? "bg-orange-500/20 text-orange-300 border-r border-white/10" : "text-muted-foreground hover:bg-muted/20 border-r border-white/10"}`}
                     >
                       HubSpot
                     </button>
@@ -1542,13 +1526,16 @@ export function Qualify() {
                         <Send className="h-3 w-3 mr-1" />
                       )}
                       {bulkPushStatus === "done"
-                        ? "PUSHED"
+                        ? "Pushed"
                         : bulkPushStatus === "pushing"
                         ? "Pushing…"
                         : `Push ${qualifyCount} qualified`}
                     </Button>
                   )}
-                  {isDone && (
+                  {isDone && !isFinished && (
+                    <span className="text-xs text-muted-foreground">Excel export once every lead is scored</span>
+                  )}
+                  {isFinished && (
                     <Button size="sm" variant="outline" className="font-mono text-xs" onClick={() => exportXlsx(batch)}>
                       <Download className="h-3 w-3 mr-1" /> Export Excel
                     </Button>
@@ -1597,26 +1584,26 @@ export function Qualify() {
               )}
               {/* Live 4-tile stats: Total / Qualified / Disqualified / Processed — visible during running AND done */}
               <div className="grid grid-cols-4 gap-2 mt-3">
-                <div className="rounded-lg bg-muted/20 border border-muted/30 p-3 text-center">
+                <div className="rounded-lg bg-muted/20 border border-white/10 p-3 text-center">
                   <p className="text-2xl font-mono font-bold text-foreground">{batch.totalCount}</p>
-                  <p className="text-[10px] text-muted-foreground mt-0.5 uppercase tracking-wider">Total</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Total</p>
                 </div>
-                <div className={`rounded-lg border p-3 text-center transition-colors ${qualifyCount > 0 ? "bg-emerald-500/10 border-emerald-500/20" : "bg-muted/20 border-muted/30"}`}>
+                <div className={`rounded-lg border p-3 text-center transition-colors ${qualifyCount > 0 ? "bg-emerald-500/10 border-emerald-500/20" : "bg-muted/20 border-white/10"}`}>
                   <p className={`text-2xl font-mono font-bold ${qualifyCount > 0 ? "text-emerald-400" : "text-muted-foreground"}`}>{qualifyCount}</p>
-                  <p className={`text-[10px] mt-0.5 uppercase tracking-wider ${qualifyCount > 0 ? "text-emerald-400/70" : "text-muted-foreground"}`}>Qualified</p>
+                  <p className={`text-xs mt-0.5 ${qualifyCount > 0 ? "text-emerald-400/70" : "text-muted-foreground"}`}>Qualified</p>
                 </div>
-                <div className={`rounded-lg border p-3 text-center transition-colors ${disqualifyCount > 0 ? "bg-rose-500/10 border-rose-500/20" : "bg-muted/20 border-muted/30"}`}>
+                <div className={`rounded-lg border p-3 text-center transition-colors ${disqualifyCount > 0 ? "bg-rose-500/10 border-rose-500/20" : "bg-muted/20 border-white/10"}`}>
                   <p className={`text-2xl font-mono font-bold ${disqualifyCount > 0 ? "text-rose-400" : "text-muted-foreground"}`}>{disqualifyCount}</p>
-                  <p className={`text-[10px] mt-0.5 uppercase tracking-wider ${disqualifyCount > 0 ? "text-rose-400/70" : "text-muted-foreground"}`}>Disqualified</p>
+                  <p className={`text-xs mt-0.5 ${disqualifyCount > 0 ? "text-rose-400/70" : "text-muted-foreground"}`}>Disqualified</p>
                 </div>
-                <div className={`rounded-lg border p-3 text-center transition-colors ${batch.completedCount > 0 ? "bg-violet-500/10 border-violet-500/20" : "bg-muted/20 border-muted/30"}`}>
+                <div className={`rounded-lg border p-3 text-center transition-colors ${batch.completedCount > 0 ? "bg-violet-500/10 border-violet-500/20" : "bg-muted/20 border-white/10"}`}>
                   <p className={`text-2xl font-mono font-bold ${batch.completedCount > 0 ? "text-violet-400" : "text-muted-foreground"}`}>{batch.completedCount}</p>
-                  <p className={`text-[10px] mt-0.5 uppercase tracking-wider ${batch.completedCount > 0 ? "text-violet-400/70" : "text-muted-foreground"}`}>Processed</p>
+                  <p className={`text-xs mt-0.5 ${batch.completedCount > 0 ? "text-violet-400/70" : "text-muted-foreground"}`}>Processed</p>
                 </div>
               </div>
               {/* AI consumption: estimate from token counts; the provider console is authoritative. */}
               {((batch.usage?.calls ?? 0) > 0 || (monthUsage?.calls ?? 0) > 0) && (
-                <div className="mt-3 text-[11px] text-muted-foreground font-mono space-y-0.5">
+                <div className="mt-3 text-xs text-muted-foreground font-mono space-y-0.5">
                   {batch.usage && batch.usage.calls > 0 && (
                     <p>
                       AI this batch: {batch.usage.calls} calls · {batch.usage.inputTokens.toLocaleString()} in / {batch.usage.outputTokens.toLocaleString()} out tokens
@@ -1646,10 +1633,10 @@ export function Qualify() {
               : sortedLeads.filter((l) => l.verdict === verdictTab);
 
             const tabs: { label: string; value: typeof verdictTab; count: number; activeClass: string }[] = [
-              { label: "ALL", value: "ALL", count: allCount, activeClass: "bg-muted/60 text-foreground border-muted" },
-              { label: "QUALIFY", value: "QUALIFY", count: qualifyCount, activeClass: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" },
-              { label: "BORDERLINE", value: "BORDERLINE", count: borderlineCount, activeClass: "bg-amber-500/15 text-amber-400 border-amber-500/30" },
-              { label: "DISQUALIFY", value: "DISQUALIFY", count: disqualifyCount, activeClass: "bg-rose-500/15 text-rose-400 border-rose-500/30" },
+              { label: "All", value: "ALL", count: allCount, activeClass: "bg-muted/60 text-foreground border-muted" },
+              { label: "Qualify", value: "QUALIFY", count: qualifyCount, activeClass: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" },
+              { label: "Borderline", value: "BORDERLINE", count: borderlineCount, activeClass: "bg-amber-500/15 text-amber-400 border-amber-500/30" },
+              { label: "Disqualify", value: "DISQUALIFY", count: disqualifyCount, activeClass: "bg-rose-500/15 text-rose-400 border-rose-500/30" },
             ];
 
             return (
@@ -1667,7 +1654,7 @@ export function Qualify() {
                         className={`px-3 py-1 rounded-md border text-xs font-mono transition-colors ${
                           verdictTab === tab.value
                             ? tab.activeClass
-                            : "bg-transparent text-muted-foreground border-muted/40 hover:border-muted hover:text-foreground"
+                            : "bg-transparent text-muted-foreground border-white/10 hover:border-muted hover:text-foreground"
                         }`}
                       >
                         {tab.label} ({tab.count})
@@ -1678,13 +1665,13 @@ export function Qualify() {
                 <CardContent className="p-0 mt-3">
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
-                      <thead className="bg-muted/20 border-y border-muted/40">
+                      <thead className="bg-muted/20 border-y border-white/10">
                         <tr>
-                          <th className="text-left px-4 py-2.5 font-mono text-xs text-muted-foreground">COMPANY</th>
-                          <th className="text-left px-4 py-2.5 font-mono text-xs text-muted-foreground">LOCATION</th>
-                          <th className="text-left px-4 py-2.5 font-mono text-xs text-muted-foreground">SCORE</th>
-                          <th className="text-left px-4 py-2.5 font-mono text-xs text-muted-foreground">VERDICT</th>
-                          <th className="text-left px-4 py-2.5 font-mono text-xs text-muted-foreground">EXPLANATION</th>
+                          <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Company</th>
+                          <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Location</th>
+                          <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Score</th>
+                          <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Verdict</th>
+                          <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Explanation</th>
                           <th className="w-8" />
                         </tr>
                       </thead>

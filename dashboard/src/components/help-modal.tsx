@@ -13,6 +13,17 @@ import { Badge } from "@/components/ui/badge";
 const steps = [
   {
     step: 1,
+    label: "Choose who you are looking for",
+    page: "ICP",
+    href: "/icp",
+    icon: BookOpen,
+    color: "text-violet-400",
+    bg: "bg-violet-400/10",
+    description:
+      "Pick a profile (ICP: ideal customer profile) and set it active, or write a new one. It suggests the Maps search terms and is what every lead is scored against.",
+  },
+  {
+    step: 2,
     label: "Find places",
     page: "Maps Search",
     href: "/maps",
@@ -23,7 +34,7 @@ const steps = [
       "Choose an area and what to look for. RECON searches Google Maps across the whole area and lists every place of that kind, with its category, address, rating, phone and website.",
   },
   {
-    step: 2,
+    step: 3,
     label: "Score the leads",
     page: "Lead Qualifier",
     href: "/qualify",
@@ -34,7 +45,7 @@ const steps = [
       "Send the places of a search, or upload a CSV or Excel list. RECON reads each website and scores the lead from 0 to 100 against the active ICP, with a verdict and the reasons.",
   },
   {
-    step: 3,
+    step: 4,
     label: "Review and export",
     page: "History",
     href: "/history",
@@ -48,18 +59,25 @@ const steps = [
 
 const pages = [
   {
+    icon: BookOpen,
+    label: "ICP",
+    color: "text-violet-400",
+    bg: "bg-violet-400/10",
+    description: "Choose the active profile or create one. A profile describes the venues you want, the signals for and against, and the score bands.",
+  },
+  {
     icon: Map,
     label: "Maps Search",
     color: "text-sky-400",
     bg: "bg-sky-400/10",
-    description: "Discover businesses by type and location, then send them to the Lead Qualifier (one by one or all at once).",
+    description: "List every place of a kind in an area, then send them to the Lead Qualifier (one by one or all at once).",
   },
   {
     icon: ListChecks,
     label: "Lead Qualifier",
     color: "text-emerald-400",
     bg: "bg-emerald-400/10",
-    description: "Bulk-score leads from a CSV or Maps. Each lead gets a score and a verdict: Qualify, Borderline or Disqualify.",
+    description: "Score leads from a Maps search, a CSV or Excel file, or a pasted list. Each lead gets a score and a verdict: Qualify, Borderline or Disqualify.",
   },
   {
     icon: History,
@@ -67,13 +85,6 @@ const pages = [
     color: "text-orange-400",
     bg: "bg-orange-400/10",
     description: "Browse past qualification batches and re-export them at any time.",
-  },
-  {
-    icon: BookOpen,
-    label: "ICP Library",
-    color: "text-violet-400",
-    bg: "bg-violet-400/10",
-    description: "Create and manage Ideal Customer Profiles. Each profile sets the signals used to score leads.",
   },
   {
     icon: Settings,
@@ -133,7 +144,7 @@ export function HelpModal() {
         {tab === "workflow" && (
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground mb-4">
-              The three steps of the menu, in order. Scoring uses the active profile of the ICP Library.
+              The four steps of the menu, in order. Start with the ICP: everything after depends on it.
             </p>
             {steps.map((s, i) => {
               const Icon = s.icon;

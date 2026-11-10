@@ -98,7 +98,7 @@ function SecretRow({
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center justify-between">
-        <label className="font-mono text-xs uppercase text-muted-foreground tracking-wider">{def.label}</label>
+        <label className="text-sm font-medium">{def.label}</label>
         {isSaved && !editing && (
           <div className="flex items-center gap-3">
             <span className="flex items-center gap-1.5 font-mono text-xs text-green-600">

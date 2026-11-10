@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useLocation } from "wouter";
 import { PageHeader } from "@/components/page-header";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -10,8 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import {
-  Loader2, Save, RotateCcw, Plus, X, Target, ShieldCheck, ShieldX, BarChart3,
-  Zap, Trash2, CheckCircle2, Map, FileText, BookOpen,
+  Loader2, Save, Plus, X, Target, ShieldCheck, ShieldX, BarChart3,
+  Zap, Trash2, CheckCircle2, FileText, BookOpen,
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -79,7 +78,6 @@ function IcpEditor({
   isActivating: boolean;
   isDeleting: boolean;
 }) {
-  const [, navigate] = useLocation();
   const [form, setForm] = useState({
     name: icp.name,
     description: icp.description,
@@ -132,7 +130,7 @@ function IcpEditor({
         <div className="flex items-center gap-2">
           {icp.isActive ? (
             <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/30 border font-mono text-xs">
-              <CheckCircle2 className="h-3 w-3 mr-1" /> ACTIVE
+              <CheckCircle2 className="h-3 w-3 mr-1" /> Active
             </Badge>
           ) : (
             <Button
@@ -143,7 +141,7 @@ function IcpEditor({
               className="font-mono text-xs h-7"
             >
               {isActivating ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Zap className="h-3 w-3 mr-1" />}
-              SET ACTIVE
+              Set active
             </Button>
           )}
           <span className="text-xs text-muted-foreground font-mono">
@@ -151,16 +149,6 @@ function IcpEditor({
           </span>
         </div>
         <div className="flex gap-2">
-          {icp.isActive && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => navigate("/maps")}
-              className="font-mono text-xs h-7 border-primary/30 text-primary hover:bg-primary/10"
-            >
-              <Map className="h-3 w-3 mr-1" /> Search Maps
-            </Button>
-          )}
           {!icp.isActive && (
             <Button
               variant="ghost"
@@ -170,7 +158,7 @@ function IcpEditor({
               className="font-mono text-xs h-7 text-destructive hover:text-destructive"
             >
               {isDeleting ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Trash2 className="h-3 w-3 mr-1" />}
-              DELETE
+              Delete
             </Button>
           )}
           <Button
@@ -180,7 +168,7 @@ function IcpEditor({
             className="font-mono font-bold h-7"
           >
             {isSaving ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Save className="h-3 w-3 mr-1" />}
-            SAVE
+            Save
           </Button>
         </div>
       </div>
@@ -263,7 +251,7 @@ function IcpEditor({
                 </div>
               ))}
               <Button variant="outline" size="sm" className="w-full font-mono text-xs mt-2" onClick={() => addSignal("qualifySignals")}>
-                <Plus className="h-3 w-3 mr-1" /> ADD SIGNAL
+                <Plus className="h-3 w-3 mr-1" /> Add signal
               </Button>
             </CardContent>
           </Card>
@@ -291,7 +279,7 @@ function IcpEditor({
                 </div>
               ))}
               <Button variant="outline" size="sm" className="w-full font-mono text-xs mt-2" onClick={() => addSignal("disqualifySignals")}>
-                <Plus className="h-3 w-3 mr-1" /> ADD CRITERIA
+                <Plus className="h-3 w-3 mr-1" /> Add criterion
               </Button>
             </CardContent>
           </Card>
@@ -308,15 +296,15 @@ function IcpEditor({
             {form.scoreBands.map((band, i) => (
               <div key={i} className="grid grid-cols-[100px_120px_1fr] gap-3 items-start">
                 <div>
-                  <p className="text-xs text-muted-foreground font-mono mb-1">RANGE</p>
+                  <p className="text-xs text-muted-foreground mb-1">Range</p>
                   <Input value={band.range} onChange={(e) => updateBand(i, "range", e.target.value)} className="bg-background/50 border-muted text-sm font-mono" placeholder="80-100" />
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground font-mono mb-1">LABEL</p>
+                  <p className="text-xs text-muted-foreground mb-1">Label</p>
                   <Input value={band.band} onChange={(e) => updateBand(i, "band", e.target.value)} className="bg-background/50 border-muted text-sm" placeholder="Strong Fit" />
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground font-mono mb-1">DESCRIPTION</p>
+                  <p className="text-xs text-muted-foreground mb-1">Description</p>
                   <Input value={band.description} onChange={(e) => updateBand(i, "description", e.target.value)} className="bg-background/50 border-muted text-sm" placeholder="What this score means..." />
                 </div>
               </div>
@@ -340,7 +328,7 @@ function IcpEditor({
                 className="font-mono text-xs h-7 shrink-0 border-primary/30 text-primary hover:bg-primary/10"
               >
                 <FileText className="h-3 w-3 mr-1" />
-                USE TEMPLATE
+                Use template
               </Button>
             </div>
           </CardHeader>
@@ -441,15 +429,6 @@ export function IcpSettings() {
     onError: (err: Error) => toast({ title: "Delete failed", description: err.message, variant: "destructive" }),
   });
 
-  const resetMutation = useMutation({
-    mutationFn: icpApi.reset,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["icps"] });
-      toast({ title: "ICP reset to defaults" });
-    },
-    onError: (err: Error) => toast({ title: "Reset failed", description: err.message, variant: "destructive" }),
-  });
-
   const createMutation = useMutation({
     mutationFn: (name: string) =>
       icpApi.create({
@@ -482,18 +461,10 @@ export function IcpSettings() {
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <PageHeader
         icon={BookOpen}
+        step={1}
         title="ICP Library"
-        description="Ideal customer profiles: who we sell to. The active profile is used to score every lead."
+        description="Choose who we are looking for: pick a profile and set it active, or create one. The active profile suggests the Maps search terms and scores every lead."
         actions={<>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => resetMutation.mutate()}
-            disabled={resetMutation.isPending}
-          >
-            {resetMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
-            Reset default
-          </Button>
           <Button size="sm" onClick={() => setShowNewForm(true)}>
             <Plus className="h-4 w-4" />
             New ICP
@@ -523,7 +494,7 @@ export function IcpSettings() {
               disabled={!newName.trim() || createMutation.isPending}
               className="font-mono shrink-0"
             >
-              {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "CREATE"}
+              {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Create"}
             </Button>
             <Button variant="ghost" onClick={() => { setShowNewForm(false); setNewName(""); }} className="shrink-0">
               <X className="h-4 w-4" />
@@ -534,7 +505,7 @@ export function IcpSettings() {
 
       <div className="grid md:grid-cols-[240px_1fr] gap-6">
         <div className="space-y-1">
-          <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider mb-2 px-1">Profiles</p>
+          <p className="text-xs font-mono text-muted-foreground mb-2 px-1">Profiles</p>
           {icps.map((icp) => (
             <button
               key={icp.id}
@@ -551,7 +522,7 @@ export function IcpSettings() {
                   <span className="shrink-0 h-1.5 w-1.5 rounded-full bg-emerald-400" title="Active" />
                 )}
               </div>
-              <p className="text-xs text-muted-foreground/60 mt-0.5 font-mono">
+              <p className="text-xs text-muted-foreground/80 mt-0.5 font-mono">
                 {new Date(icp.updatedAt).toLocaleDateString()}
               </p>
             </button>

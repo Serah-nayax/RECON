@@ -123,6 +123,8 @@ export interface MapGridPickerProps {
   onClearDraw: () => void;
   loading?: boolean;
   placeholder?: string;
+  /** Height of the map in pixels. */
+  height?: number;
 }
 
 export function MapGridPicker({
@@ -136,6 +138,7 @@ export function MapGridPicker({
   onClearDraw,
   loading,
   placeholder,
+  height = 380,
 }: MapGridPickerProps) {
   const [drawing, setDrawing] = useState(false);
 
@@ -158,22 +161,22 @@ export function MapGridPicker({
   }
 
   return (
-    <div className="flex flex-col gap-0">
+    <div className="flex flex-col overflow-hidden rounded-xl border border-white/[0.07] bg-card shadow-[0_10px_30px_-15px_rgba(0,0,0,0.7)]">
       {/* Toolbar */}
-      <div className="flex items-center justify-between px-3 py-2 border border-b-0 border-border rounded-t-lg bg-card">
-        <span className="text-[11px] font-mono text-muted-foreground">
+      <div className="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-white/[0.07]">
+        <span className="text-sm text-muted-foreground">
           {drawing ? (
             <span className="text-primary animate-pulse">Click and drag on the map to draw your area</span>
           ) : cells.length > 0 ? (
             <>
               <span className="text-primary font-semibold">{selectedIndices.size}</span>
-              <span className="text-muted-foreground/60"> / {cells.length} cells selected</span>
-              {drawnBbox && <span className="ml-2 text-primary/60">· drawn area</span>}
+              <span> / {cells.length} cells selected</span>
+              {drawnBbox && <span className="ml-2 text-primary/80">· drawn area</span>}
             </>
           ) : loading ? (
-            <span className="text-muted-foreground/50 animate-pulse">Loading grid…</span>
+            <span className="animate-pulse">Loading the grid…</span>
           ) : (
-            <span className="text-muted-foreground/40">{placeholder ?? "Enter a location or draw an area"}</span>
+            <span>{placeholder ?? "Enter a location or draw an area"}</span>
           )}
         </span>
 
@@ -182,10 +185,10 @@ export function MapGridPicker({
           <button
             type="button"
             onClick={drawing ? handleCancel : startDraw}
-            className={`flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded border transition-colors ${
+            className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-md border transition-colors ${
               drawing
                 ? "border-primary/60 bg-primary/10 text-primary"
-                : "border-muted/30 text-muted-foreground hover:border-primary/40 hover:text-primary"
+                : "border-white/10 text-muted-foreground hover:border-primary/40 hover:text-primary"
             }`}
           >
             <Pencil className="h-3 w-3" />
@@ -197,7 +200,7 @@ export function MapGridPicker({
             <button
               type="button"
               onClick={handleClear}
-              className="flex items-center gap-1 text-[10px] font-mono text-muted-foreground hover:text-destructive transition-colors"
+              className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-destructive transition-colors"
             >
               <X className="h-3 w-3" />
               Clear
@@ -210,14 +213,14 @@ export function MapGridPicker({
               <button
                 type="button"
                 onClick={onSelectAll}
-                className="text-[10px] font-mono text-primary hover:underline"
+                className="text-xs font-medium text-primary hover:underline"
               >
                 Select all
               </button>
               <button
                 type="button"
                 onClick={onDeselectAll}
-                className="text-[10px] font-mono text-muted-foreground hover:text-foreground hover:underline"
+                className="text-xs font-medium text-muted-foreground hover:text-foreground hover:underline"
               >
                 Deselect all
               </button>
@@ -227,17 +230,18 @@ export function MapGridPicker({
       </div>
 
       {/* Map */}
-      <div className="rounded-b-lg overflow-hidden border border-border" style={{ height: 380 }}>
+      <div style={{ height }}>
         <MapContainer
           center={[20, 0]}
           zoom={2}
-          style={{ height: "100%", width: "100%", background: "#0d1117" }}
+          style={{ height: "100%", width: "100%", background: "#0f1420" }}
           zoomControl
         >
           <TileLayer
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             maxZoom={19}
+            className="map-tiles-dark"
           />
 
           {/* Fit bounds to cells or drawn bbox */}
@@ -251,7 +255,7 @@ export function MapGridPicker({
             <Rectangle
               bounds={[[drawnBbox.minLat, drawnBbox.minLng], [drawnBbox.maxLat, drawnBbox.maxLng]]}
               pathOptions={{
-                color: "#22c55e",
+                color: "#60a5fa",
                 fillOpacity: 0,
                 weight: 1.5,
                 dashArray: "6 3",
@@ -268,9 +272,9 @@ export function MapGridPicker({
                 key={idx}
                 bounds={cellBounds(cell)}
                 pathOptions={{
-                  color: selected ? "#22c55e" : "#6b7280",
-                  fillColor: selected ? "#22c55e" : "#6b7280",
-                  fillOpacity: selected ? 0.28 : 0.07,
+                  color: selected ? "#60a5fa" : "#94a3b8",
+                  fillColor: selected ? "#3b82f6" : "#94a3b8",
+                  fillOpacity: selected ? 0.25 : 0.06,
                   weight: selected ? 1.5 : 0.8,
                   opacity: selected ? 0.85 : 0.35,
                 }}
@@ -282,8 +286,8 @@ export function MapGridPicker({
       </div>
 
       {cells.length > 0 && (
-        <p className="text-[10px] font-mono text-muted-foreground/40 mt-1 pl-1">
-          Click cells to include / exclude · or draw a new area to re-tile
+        <p className="text-xs text-muted-foreground px-4 py-2 border-t border-white/[0.07]">
+          Click a cell to include or exclude it, or draw a new area.
         </p>
       )}
     </div>

@@ -1,6 +1,7 @@
 import { Link, useLocation } from "wouter";
-import { Radar, Settings, AlertTriangle, History, Map, ListChecks, BookOpen } from "lucide-react";
+import { Settings, AlertTriangle, History, Map, ListChecks, BookOpen } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Logo } from "@/components/logo";
 import { HelpModal } from "@/components/help-modal";
 import { getCrawlerApiKey } from "@/lib/crawlerAuth";
 import { useServerInfo } from "@/lib/serverInfo";
@@ -26,38 +27,38 @@ export function Layout({ children }: { children: React.ReactNode }) {
     };
   }, [location]);
 
-  // The work in order (find, qualify, results), then what configures it.
+  // The work in order: who we look for, find, qualify, results. Settings apart.
   const mainLinks = [
-    { href: "/maps", label: "Maps Search", icon: Map, step: 1 },
-    { href: "/qualify", label: "Lead Qualifier", icon: ListChecks, step: 2 },
-    { href: "/history", label: "History", icon: History, step: 3 },
+    { href: "/icp", label: "ICP", icon: BookOpen, step: 1 },
+    { href: "/maps", label: "Maps Search", icon: Map, step: 2 },
+    { href: "/qualify", label: "Lead Qualifier", icon: ListChecks, step: 3 },
+    { href: "/history", label: "History", icon: History, step: 4 },
   ];
-  const sideLinks = [
-    { href: "/icp", label: "ICP Library", icon: BookOpen },
-    { href: "/settings", label: "Settings", icon: Settings },
-  ];
+  const sideLinks = [{ href: "/settings", label: "Settings", icon: Settings }];
   const linkClass = (href: string) =>
     `flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors text-sm ${
       location.startsWith(href)
-        ? "bg-primary/15 text-primary font-medium"
-        : "text-muted-foreground hover:text-foreground hover:bg-muted"
+        ? "bg-primary/12 text-foreground font-medium ring-1 ring-inset ring-primary/30"
+        : "text-muted-foreground hover:text-foreground hover:bg-white/[0.04]"
     }`;
 
   return (
-    <div className="flex min-h-screen w-full flex-col bg-background text-foreground selection:bg-primary selection:text-primary-foreground font-sans">
-      <header className="sticky top-0 z-50 flex h-16 items-center gap-2 border-b bg-background/90 px-6 backdrop-blur">
+    <div className="app-bg flex min-h-screen w-full flex-col text-foreground selection:bg-primary selection:text-primary-foreground font-sans">
+      <header className="sticky top-0 z-50 flex h-16 items-center gap-2 border-b border-white/[0.06] bg-background/70 px-6 backdrop-blur-xl">
         <Link href="/" className="flex items-center gap-2 mr-6 font-semibold tracking-tight text-foreground hover:text-primary transition-colors" data-testid="link-home-logo">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <Radar className="h-4.5 w-4.5" />
-          </span>
-          <span className="text-lg">RECON</span>
+          <Logo className="h-8 w-8 drop-shadow-[0_0_12px_rgba(125,211,252,0.35)]" />
+          <span className="text-lg tracking-[0.12em]">RECON</span>
         </Link>
         <nav className="flex items-center gap-1">
           {mainLinks.map((link) => {
             const Icon = link.icon;
             return (
-              <Link key={link.href} href={link.href} className={linkClass(link.href)}>
-                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-muted text-[11px] font-semibold text-muted-foreground">
+              <Link key={link.href} href={link.href} className={`group ${linkClass(link.href)}`}>
+                <span
+                  className={`flex h-5 w-5 items-center justify-center rounded-full text-xs font-semibold tabular-nums ${
+                    location.startsWith(link.href) ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                  }`}
+                >
                   {link.step}
                 </span>
                 <Icon className="h-4 w-4" />

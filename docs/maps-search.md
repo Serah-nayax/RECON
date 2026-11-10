@@ -4,11 +4,11 @@ Lists every place of a given kind in an area, from Google Maps.
 
 ## Running a search
 
-1. **Area.** Type a country, region, city or district and pick a suggestion, or **Draw Area** on the map. You can add several areas.
-2. **Grid.** The map shows the cells that will be searched. With a single area, click a cell to leave it out.
-3. **Search terms.** Type one or more terms. The active ICP suggests terms: click one to add it.
-4. **Data fields.** Name, category, address, rating and reviews come with every place. Phone, website and hours are optional (*deep mode*).
-5. **Start Search.** Places appear as they are found. A search can be paused and resumed, and resumes on its own after a restart.
+1. **What to look for.** Type one or more search terms. The active ICP suggests terms: click one to add it.
+2. **Where.** Type a country, region, city or district and pick a suggestion, or **Draw area** on the map. You can add several areas. The map shows the cells that will be searched; with a single area, click a cell to leave it out.
+3. **Start search.** Places appear as they are found. A search can be paused and resumed, and resumes on its own after a restart.
+
+Every place comes with its name, category, address, rating, reviews, phone, website and Google Maps link. Phone and website are read from each place page and keep filling in while the search runs.
 
 ## How it works
 

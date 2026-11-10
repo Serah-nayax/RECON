@@ -5,31 +5,38 @@ import { Map, ListChecks, History, BookOpen, ArrowRight, Loader2 } from "lucide-
 import { mapsApi } from "@/lib/mapsApi";
 import { icpApi, qualifyApi } from "@/lib/qualifyApi";
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 
 const STEPS = [
   {
     step: 1,
-    href: "/maps",
-    icon: Map,
-    title: "Maps Search",
-    text: "Pick an area and what you are looking for. RECON lists every place of that kind found on Google Maps.",
-    action: "New search",
+    href: "/icp",
+    icon: BookOpen,
+    title: "ICP",
+    text: "Choose who you are looking for: pick a profile or write one. It suggests what to search and scores every lead.",
+    action: "Choose the ICP",
   },
   {
     step: 2,
-    href: "/qualify",
-    icon: ListChecks,
-    title: "Lead Qualifier",
-    text: "Send the places of a search, or upload a CSV or Excel list. Each lead gets a score from 0 to 100, a verdict and the reasons.",
-    action: "Qualify leads",
+    href: "/maps",
+    icon: Map,
+    title: "Maps Search",
+    text: "Pick what to look for and where. RECON lists every place of that kind found on Google Maps.",
+    action: "New search",
   },
   {
     step: 3,
+    href: "/qualify",
+    icon: ListChecks,
+    title: "Lead Qualifier",
+    text: "Score the places of a search, or a CSV or Excel list: 0 to 100, a verdict and the reasons.",
+    action: "Qualify leads",
+  },
+  {
+    step: 4,
     href: "/history",
     icon: History,
     title: "History",
-    text: "Every qualification, kept. Open one to review the leads and download them as Excel or CSV.",
+    text: "Every qualification, kept. Review the leads and download them as Excel or CSV.",
     action: "See results",
   },
 ];
@@ -51,20 +58,26 @@ export default function Home() {
 
   return (
     <div className="space-y-10 animate-in fade-in duration-500">
-      <section className="pt-4">
-        <h1 className="text-3xl font-semibold tracking-tight">Find venues. Keep the ones that fit.</h1>
-        <p className="text-muted-foreground mt-2 max-w-2xl">
+      <section className="pt-6">
+        <p className="text-xs font-medium uppercase tracking-[0.2em] text-primary/80 mb-3">Prospecting for Tigapo</p>
+        <h1 className="text-4xl font-semibold tracking-tight leading-tight">
+          Find venues.{" "}
+          <span className="bg-gradient-to-r from-sky-300 via-blue-400 to-indigo-400 bg-clip-text text-transparent">
+            Keep the ones that fit.
+          </span>
+        </h1>
+        <p className="text-muted-foreground mt-3 max-w-2xl leading-relaxed">
           RECON lists the places of a kind in any area from Google Maps, then scores each one against your ideal
           customer profile.
         </p>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-3">
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {STEPS.map((s) => {
           const Icon = s.icon;
           return (
             <Link key={s.href} href={s.href}>
-              <Card className="group h-full p-6 flex flex-col cursor-pointer transition-colors hover:border-primary/50 hover:bg-card/80">
+              <Card className="card-lift group h-full p-6 flex flex-col cursor-pointer">
                 <div className="flex items-center justify-between mb-5">
                   <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
                     <Icon className="h-5 w-5" />
@@ -72,7 +85,13 @@ export default function Home() {
                   <span className="text-xs font-medium text-muted-foreground">Step {s.step}</span>
                 </div>
                 <h2 className="text-lg font-semibold">{s.title}</h2>
-                <p className="text-sm text-muted-foreground mt-1.5 flex-1">{s.text}</p>
+                <p className="text-sm text-muted-foreground mt-1.5 flex-1 leading-relaxed">{s.text}</p>
+                {s.step === 1 && (
+                  <p className="mt-4 rounded-lg border border-violet-400/20 bg-violet-400/5 px-3 py-2 text-xs">
+                    <span className="text-muted-foreground">Active: </span>
+                    <span className="font-medium text-violet-300">{icp?.name ?? "…"}</span>
+                  </p>
+                )}
                 <span className="mt-5 inline-flex items-center gap-1.5 text-sm font-medium text-primary">
                   {s.action}
                   <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
@@ -81,19 +100,6 @@ export default function Home() {
             </Link>
           );
         })}
-      </section>
-
-      <section className="rounded-xl border bg-card p-5 flex flex-wrap items-center gap-4">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-500/10 text-violet-400 shrink-0">
-          <BookOpen className="h-5 w-5" />
-        </div>
-        <div className="flex-1 min-w-[240px]">
-          <p className="text-xs text-muted-foreground">Leads are scored against the active ICP (ideal customer profile)</p>
-          <p className="font-medium mt-0.5">{icp?.name ?? "…"}</p>
-        </div>
-        <Link href="/icp">
-          <Button variant="outline" size="sm">Change ICP</Button>
-        </Link>
       </section>
 
       <section className="grid gap-4 md:grid-cols-2">

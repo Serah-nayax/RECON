@@ -61,27 +61,27 @@
 
 :root {
   /* Dark blue-grey, one blue accent: green, amber and red stay for verdicts and statuses. */
-  --background: 224 28% 7%;
-  --foreground: 220 20% 96%;
-  --card: 224 24% 10%;
-  --card-foreground: 220 20% 96%;
-  --card-border: 222 18% 17%;
-  --popover: 224 24% 10%;
-  --popover-foreground: 220 20% 96%;
-  --popover-border: 222 18% 17%;
-  --primary: 217 91% 62%;
+  --background: 222 24% 8%;
+  --foreground: 214 32% 93%;
+  --card: 222 21% 11%;
+  --card-foreground: 214 32% 93%;
+  --card-border: 220 16% 18%;
+  --popover: 222 21% 11%;
+  --popover-foreground: 214 32% 93%;
+  --popover-border: 220 16% 18%;
+  --primary: 217 91% 64%;
   --primary-foreground: 0 0% 100%;
   --secondary: 222 18% 16%;
-  --secondary-foreground: 220 20% 96%;
+  --secondary-foreground: 214 32% 93%;
   --muted: 222 18% 15%;
-  --muted-foreground: 218 13% 64%;
+  --muted-foreground: 217 15% 70%;
   --accent: 222 18% 16%;
-  --accent-foreground: 220 20% 96%;
+  --accent-foreground: 214 32% 93%;
   --destructive: 0 72% 51%;
   --destructive-foreground: 0 0% 100%;
-  --border: 222 18% 17%;
-  --input: 222 18% 20%;
-  --ring: 217 91% 62%;
+  --border: 220 16% 18%;
+  --input: 220 16% 22%;
+  --ring: 217 91% 64%;
   --radius: 0.625rem;
 
   --sidebar: 224 26% 8%;
@@ -117,4 +117,40 @@
   body {
     @apply font-sans antialiased bg-background text-foreground;
   }
+}
+
+/* Soft blue light at the top of every page, so the dark background has depth instead of a flat fill. */
+.app-bg {
+  background-color: hsl(var(--background));
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -10%, hsl(217 91% 60% / 0.13), transparent 70%),
+    radial-gradient(ellipse 40% 35% at 95% 0%, hsl(250 80% 65% / 0.07), transparent 70%);
+  background-attachment: fixed;
+}
+
+/* Clickable cards: rise slightly and light their border on hover. */
+.card-lift {
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.card-lift:hover {
+  transform: translateY(-2px);
+  border-color: hsl(var(--primary) / 0.45);
+  box-shadow: 0 12px 32px -12px hsl(217 91% 50% / 0.35);
+}
+
+/* OpenStreetMap tiles are light: turned dark to sit in the theme (cells and outlines are not filtered). */
+.map-tiles-dark {
+  filter: invert(1) hue-rotate(190deg) brightness(1.1) contrast(0.8) saturate(0.5);
+}
+.leaflet-bar a {
+  background-color: hsl(var(--card)) !important;
+  color: hsl(var(--foreground)) !important;
+  border-color: hsl(var(--border)) !important;
+}
+.leaflet-container .leaflet-control-attribution {
+  background: hsl(var(--background) / 0.75);
+  color: hsl(var(--muted-foreground));
+}
+.leaflet-control-attribution a {
+  color: hsl(var(--primary));
 }

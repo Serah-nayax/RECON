@@ -5,7 +5,7 @@ The Lead Qualifier scores each lead against the **active ICP** (ideal customer p
 ## Running a batch
 
 - **From Maps**: *Qualify all* on a search, or send single places.
-- **From a file**: upload a CSV, Excel or ODS list with at least a name, ideally a website.
+- **From a file**: upload a CSV, Excel or ODS list with at least a name, ideally a website, or paste a list.
 
 Batches run in the background. They can be stopped, resumed and retried, and resume on their own after a restart. Past batches are listed under **History**.
 
@@ -17,7 +17,7 @@ Batches run in the background. They can be stopped, resumed and retried, and res
 | **Verdict** | QUALIFY (60+), BORDERLINE (40–59), DISQUALIFY (below 40) |
 | **Signals** | The evidence for and against, quoted from the website or taken from Maps |
 
-Results can be exported to Excel or pushed to HubSpot or Salesforce.
+Results can be exported to Excel once every lead of the batch is scored (a stopped batch must be resumed first), or pushed to HubSpot or Salesforce.
 
 ## How a lead is scored
 
@@ -41,4 +41,4 @@ An ICP describes the customers you want:
 - **Score bands**: what each score range means.
 - **System prompt**: instructions given to the AI.
 
-One ICP is active at a time. It is used by the qualifier and suggests search terms on the Maps page. **Reset** restores the example ICP.
+One ICP is active at a time. It is used by the qualifier and suggests search terms on the Maps page.
