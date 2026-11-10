@@ -34,6 +34,10 @@ export interface MapsLead {
   lng?: number;
   detailStatus?: "idle" | "running" | "done" | "failed";
   detailError?: string | null;
+  /** The search term whose cell first listed the place (measures what each term brings). */
+  foundBy?: string;
+  /** That cell's index in the job. */
+  foundInCell?: number;
 }
 
 /** Extract lat/lng from a Google Maps URL of the form /@lat,lng,zoom */

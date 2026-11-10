@@ -14,6 +14,9 @@ import type { SocialIntel } from "./socialLinks.js";
 import { logger } from "../logger.js";
 import { canonicalizeLeadUrl } from "./leadIdentity.js";
 import { runGeminiCall } from "../geminiLimiter.js";
+import { buildAiPrompt, readAssessment, scoreAssessment, type AiPrompt } from "./aiScoring.js";
+import { askClaude, claudeModel, isClaudeConfigured } from "./claudeClient.js";
+import { emptyUsage, type AiUsage } from "./aiUsage.js";
 
 export interface SourceSummary {
   pages: number;
@@ -62,6 +65,8 @@ export interface QualifyResult {
   socialProfiles: SocialIntel[];
   reviewAnalysis: ReviewAnalysis | null;
   competitorAnalysis: CompetitorAnalysis | null;
+  /** AI tokens this qualification consumed; null when no AI call was made (free scoring, cache). */
+  aiUsage?: AiUsage | null;
 }
 
 function isUnconfiguredAiIntegrationError(error: unknown): boolean {
@@ -77,7 +82,7 @@ function isRecoverableAiError(error: unknown): boolean {
   return (
     isUnconfiguredAiIntegrationError(error) ||
     isRateLimitError(error) ||
-    /\b(408|429|500|502|503|504)\b|rate.?limit|timed? ?out|timeout|temporar|unavailable|econnreset|fetch failed/i.test(message)
+    /\b(408|429|500|502|503|504|529)\b|rate.?limit|overloaded|timed? ?out|timeout|temporar|unavailable|econnreset|fetch failed|connection error/i.test(message)
   );
 }
 
@@ -95,6 +100,73 @@ function thinkingOption(): { thinkingConfig?: { thinkingBudget: number } } {
   return Number.isFinite(thinkingBudget) ? { thinkingConfig: { thinkingBudget } } : {};
 }
 
+const geminiModel = () => process.env.GEMINI_MODEL || "gemini-2.5-flash";
+
+// One AI call, returning the raw text and adding the tokens it used to `usage`.
+// Claude when RECON_ENABLE_CLAUDE=1 and its key is set, otherwise Gemini (paced by the Gemini limiter).
+async function requestRawText(
+  prompt: AiPrompt,
+  leadName: string,
+  usage: AiUsage,
+  signal?: AbortSignal,
+): Promise<string> {
+  if (isClaudeConfigured()) {
+    const reply = await askClaude(prompt.instructions, prompt.lead, prompt.schema, signal);
+    usage.calls++;
+    usage.inputTokens += reply.inputTokens;
+    usage.outputTokens += reply.outputTokens;
+    usage.cacheWriteTokens = (usage.cacheWriteTokens ?? 0) + reply.cacheWriteTokens;
+    usage.cacheReadTokens = (usage.cacheReadTokens ?? 0) + reply.cacheReadTokens;
+    logger.info(
+      {
+        lead: leadName,
+        model: usage.model,
+        inputTokens: reply.inputTokens,
+        cacheWriteTokens: reply.cacheWriteTokens,
+        cacheReadTokens: reply.cacheReadTokens,
+        outputTokens: reply.outputTokens,
+      },
+      "Claude call done",
+    );
+    return reply.text;
+  }
+  const response = await runGeminiCall(
+    () =>
+      ai.models.generateContent({
+        model: geminiModel(),
+        contents: [{ role: "user", parts: [{ text: `${prompt.instructions}\n\n${prompt.lead}` }] }],
+        config: {
+          responseMimeType: "application/json",
+          maxOutputTokens: 8192,
+          abortSignal: signal,
+          ...thinkingOption(),
+        },
+      }),
+    signal,
+  );
+  // Gemini bills its "thinking" tokens as output.
+  const meta = response.usageMetadata;
+  usage.calls++;
+  usage.inputTokens += meta?.promptTokenCount ?? 0;
+  usage.outputTokens += (meta?.candidatesTokenCount ?? 0) + (meta?.thoughtsTokenCount ?? 0);
+  // Empty stays empty, so the parsing rejects it and the call is retried (see askClaude).
+  return response.text ?? "";
+}
+
+/**
+ * The tokens of a lead that ends in failure were still billed: they ride on the error so the
+ * runner can save them with the failed lead, and the batch and month costs stay complete.
+ */
+export function withAiUsage(error: unknown, usage: AiUsage): Error {
+  const err = error instanceof Error ? error : new Error(String(error));
+  if (usage.calls > 0) (err as Error & { aiUsage?: AiUsage }).aiUsage = usage;
+  return err;
+}
+
+export function aiUsageOfError(error: unknown): AiUsage | null {
+  return (error as { aiUsage?: AiUsage } | null)?.aiUsage ?? null;
+}
+
 // ── High-value page slots fed to the AI ──────────────────────────────────────
 const MAX_PAGES_IN_CONTEXT = 8;
 const MAX_CHARS_PER_PAGE = 2000;
@@ -103,7 +175,11 @@ const FAST_CRAWL_PAGE_LIMIT = 4;
 // A normal site is read in ~5 s; past this, score with whatever pages arrived.
 const FAST_CRAWL_DEADLINE_MS = 15_000;
 const QUALIFICATION_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
-const QUALIFICATION_CACHE_MAX_ENTRIES = 250;
+const UNREAD_SITE_CACHE_TTL_MS = 5 * 60 * 1000;
+const CRAWL_ATTEMPTS = 2;
+const CRAWL_RETRY_DELAY_MS = 5000;
+// Above the size of a big batch (Lyon: 258 leads), so retrying a batch never pays twice.
+const QUALIFICATION_CACHE_MAX_ENTRIES = 2000;
 
 const qualificationCache = new Map<string, { result: QualifyResult; expiresAt: number }>();
 
@@ -148,126 +224,60 @@ function cacheQualification(
   }
 }
 
-function buildPrompt(icp: IcpConfig, leadContext: string): string {
-  const qualifyList = icp.qualifySignals.map((s) => `- ${s}`).join("\n");
-  const disqualifyList = icp.disqualifySignals.map((s) => `- ${s}`).join("\n");
-  const bandList = icp.scoreBands
-    .map((b) => `- ${b.range} (${b.band}): ${b.description}`)
-    .join("\n");
-
-  const systemSection = icp.systemPrompt
-    .replace("{ICP_DESCRIPTION}", icp.description)
-    .replace("{QUALIFY_SIGNALS}", qualifyList)
-    .replace("{DISQUALIFY_SIGNALS}", disqualifyList)
-    .replace("{SCORE_BANDS}", bandList);
-
-  const signalFormatInstructions = `
-SIGNAL FORMAT — CRITICAL:
-keySignals and missingSignals MUST be short noun phrases of 3-6 words each.
-DO NOT write full sentences or explanations in signals.
-DO write specific, factual, evidence-based phrases drawn directly from the crawled data.
-
-GOOD signal examples (copy this style exactly):
-  "50+ arcade machines confirmed"
-  "full redemption counter present"
-  "cashless card kiosks installed"
-  "active loyalty rewards program"
-  "birthday party rooms available"
-  "4.7★ Google (800+ reviews)"
-  "token coin-op machines"
-  "largest arcade in [city]"
-  "no cashless system found"
-  "machine count unconfirmed"
-  "bar-primary with 3 machines"
-
-BAD signal examples (never do this):
-  "The venue appears to have a large arcade section with many machines" ← too long, not factual
-  "Based on the website content..." ← never start with filler
-  "Opportunity for cashless upgrade" ← too vague
-
-PAIN POINTS — extract 2-4 specific operational problems this venue faces that your company solves:
-Each pain point is 5-10 words, specific and evidence-based from the crawled data.
-Examples:
-  "token-based cash handling inefficiency"
-  "no player spend data available"
-  "manual cash collection from machines"
-  "loyalty program absent, no repeat visits"
-  "party package payments still cash-only"
-  "no centralised machine management system"
-
-VENUE INTEL — extract structured facts about the venue:
-- estimatedMachineCount: best estimate (e.g. "50+", "20-30", "2-3", "unknown")
-- paymentSystem: current system visible (e.g. "token/coin-op", "cashless (card system)", "mixed token + card", "unknown")
-- venueType: most specific label (e.g. "FEC", "barcade", "trampoline park + arcade", "bowling + arcade", "standalone arcade")
-- hasRedemption: true if evidence of redemption counter, prize wall, or ticket redemption
-- hasLoyalty: true if evidence of loyalty card, rewards program, or member points
-- hasFoodBeverage: true if venue serves food or drinks
-- hasPartyRooms: true if they offer birthday parties or private event rooms
-- isChain: true if this is one location in a multi-site chain
-- chainName: chain brand name or null
-
-OUTREACH INTEL — actionable sales intelligence for the sales rep:
-- pitchAngle: 1-2 sentence custom pitch for THIS specific venue (what your company solves for THEM specifically)
-- competitorSystem: name of any existing cashless/card system found, or null
-- decisionMakers: array of named decision-makers (owner, GM, manager, operator) found on the site. For each, extract: name (required), title (their role or null), email (personal/direct only — NOT generic info@/contact@/admin@ addresses), phone (direct line or null). Use empty array [] if no named individuals found.
-- openingHook: ONE specific, research-backed sentence a sales rep can open with — referencing something found on the site
-
-MULTILINGUAL CONTENT:
-The crawled website content may be written in any language (French, German, Spanish,
-Portuguese, Italian, Dutch, Japanese, Arabic, Korean, or others). You MUST analyse and
-interpret ALL content regardless of language — do not penalise a venue for having a
-non-English website; a French FEC is just as valid a lead as an American one.
-Extract signals from the native-language text exactly as you would from English content.
-ALL output fields MUST be written in English, regardless of the source language.
-
-Return ONLY valid JSON with this exact structure:
-{
-  "score": <number 0-100>,
-  "verdict": "QUALIFY" | "BORDERLINE" | "DISQUALIFY",
-  "icpExplanation": "<2-3 sentence explanation of score and fit>",
-  "keySignals": ["<3-6 word phrase>", ...],
-  "missingSignals": ["<3-6 word phrase>", ...],
-  "painPoints": ["<5-10 word specific pain point>", ... up to 4],
-  "venueIntel": {
-    "estimatedMachineCount": "<string>",
-    "paymentSystem": "<string>",
-    "venueType": "<string>",
-    "hasRedemption": <boolean>,
-    "hasLoyalty": <boolean>,
-    "hasFoodBeverage": <boolean>,
-    "hasPartyRooms": <boolean>,
-    "isChain": <boolean>,
-    "chainName": <string | null>
-  },
-  "outreachIntel": {
-    "pitchAngle": "<1-2 sentence custom pitch>",
-    "competitorSystem": <string | null>,
-    "decisionMakers": [{"name": "<string>", "title": <string | null>, "email": <string | null>, "phone": <string | null>}],
-    "openingHook": "<specific research-backed opener>"
-  },
-  "competitorIntel": {
-    "vendorName": <string | null>,
-    "productCategory": <string | null>,
-    "description": <string | null>,
-    "aspectClaims": [{"aspect": "<aspect name e.g. Pricing model>", "them": "<brief claim about competitor>"}]
-  },
-  "recommendedAction": "<specific next action for sales team>",
-  "sourceSummary": {
-    "pages": <number of internal pages crawled>,
-    "reviews": ["<platform name>", ...],
-    "socials": ["<platform name>", ...]
-  }
+interface Opinion {
+  parsed: any;
+  assessment: ReturnType<typeof readAssessment>;
+  scored: ReturnType<typeof scoreAssessment>;
 }
 
-COMPETITOR INTEL INSTRUCTIONS:
-If you find evidence of an existing cashless/payment system (from competitorSystem or elsewhere), populate competitorIntel.
-vendorName: the competitor vendor name (as named on the site), or null if none detected.
-productCategory: their product type (e.g. "Cashless FEC platform"), or null.
-description: 1 sentence about what they offer, or null.
-aspectClaims: 3-5 aspect claims you can infer about the competitor from context (pricing, hardware, loyalty, reporting, support). Return [] if unknown.
-Set competitorIntel to null if no competitor system is detected.`;
+function scoreOpinion(parsed: any, icp: IcpConfig, content: string, hasContent: boolean): Opinion {
+  const assessment = readAssessment(parsed, icp, content);
+  return { parsed, assessment, scored: scoreAssessment(assessment, { hasContent }) };
+}
 
-  return `${systemSection}\n\n${leadContext}\n\n${signalFormatInstructions}`;
+// Scores where one more or one less signal changes the verdict. Below 25 the lead is another kind
+// of business (10) and above 75 a target with several quoted signals: both were identical on repeat runs.
+const UNCERTAIN_SCORE_MIN = 25;
+const UNCERTAIN_SCORE_MAX = 75;
+
+function isUncertainScore(score: number): boolean {
+  return score >= UNCERTAIN_SCORE_MIN && score <= UNCERTAIN_SCORE_MAX;
+}
+
+/** Second opinion, and a third if the first two disagree on the verdict. A failed extra call keeps what we have. */
+async function addOpinions(
+  opinions: Opinion[],
+  askOnce: () => Promise<any>,
+  icp: IcpConfig,
+  content: string,
+  hasContent: boolean,
+  leadName: string,
+  signal: AbortSignal | undefined,
+): Promise<Opinion[]> {
+  const all = [...opinions];
+  while (all.length < 3) {
+    if (all.length === 2 && all[0].scored.verdict === all[1].scored.verdict) break;
+    try {
+      all.push(scoreOpinion(await askOnce(), icp, content, hasContent));
+    } catch (err) {
+      if (signal?.aborted) throw new Error("Qualification cancelled");
+      logger.warn(
+        { lead: leadName, error: err instanceof Error ? err.message : String(err) },
+        "Extra AI opinion failed; keeping the opinions already made",
+      );
+      break;
+    }
+  }
+  return all;
+}
+
+/**
+ * One opinion: itself. Two that agree on the verdict: the lower score (the cautious one).
+ * Three: the median. Two that disagree (third call failed): the lower one.
+ */
+function pickOpinion(opinions: Opinion[]): Opinion {
+  const sorted = [...opinions].sort((a, b) => a.scored.score - b.scored.score);
+  return sorted.length === 3 ? sorted[1] : sorted[0];
 }
 
 /**
@@ -308,7 +318,8 @@ export async function qualifyLead(
   if (cached) {
     logger.info({ lead: lead.name }, "Qualification cache hit");
     onProgress?.("scoring");
-    return cached;
+    // A cached answer made no new AI call, so it costs nothing this time.
+    return { ...cached, aiUsage: null };
   }
 
   onProgress?.("crawling");
@@ -316,9 +327,21 @@ export async function qualifyLead(
   // Decision-first crawl: homepage plus the highest-value linked pages. A place Google Maps lists
   // without a website is still scored, from its name, category and notes.
   const hasWebsite = !!lead.url?.trim();
-  const pages = hasWebsite
-    ? await crawlSite(lead.url, 1, FAST_CRAWL_PAGE_LIMIT, signal, FAST_CRAWL_DEADLINE_MS)
-    : [];
+  let pages: PageData[] = [];
+  if (hasWebsite) {
+    // A site that gives nothing is tried again: during a network hiccup (Nov 2026 test), sites
+    // read fine before and after came back empty, and an arcade scored without its site drops
+    // from 67 to 42.
+    for (let attempt = 0; attempt < CRAWL_ATTEMPTS && pages.length === 0; attempt++) {
+      if (attempt > 0) {
+        await new Promise((resolve) => setTimeout(resolve, CRAWL_RETRY_DELAY_MS * attempt));
+        if (signal?.aborted) throw new Error("Qualification cancelled");
+      }
+      pages = await crawlSite(lead.url, 1, FAST_CRAWL_PAGE_LIMIT, signal, FAST_CRAWL_DEADLINE_MS);
+    }
+  }
+  // A score made without the lead's own site is kept briefly only, so a retry reads the site again.
+  const resultCacheTtlMs = hasWebsite && pages.length === 0 ? UNREAD_SITE_CACHE_TTL_MS : QUALIFICATION_CACHE_TTL_MS;
 
   // Discover optional enrichment sources without fetching them on the critical path.
   const reviewLinks = extractReviewLinks(pages);
@@ -369,7 +392,7 @@ export async function qualifyLead(
 
   onProgress?.("scoring");
 
-  const fullPrompt = buildPrompt(icp, leadContext);
+  const fullPrompt = buildAiPrompt(icp, leadContext);
 
   const inferredSource: SourceSummary = {
     pages: pages.length,
@@ -377,34 +400,20 @@ export async function qualifyLead(
     socials: socialLinks,
   };
 
-  if (!isGeminiConfigured()) {
+  if (!isClaudeConfigured() && !isGeminiConfigured()) {
     const result = await scoreFree(lead, icp, pages, socialIntel, inferredSource, "no-ai-key");
-    cacheQualification(cacheKey, result);
+    cacheQualification(cacheKey, result, resultCacheTtlMs);
     return result;
   }
 
-  let parsed: any;
-  try {
-    parsed = await pRetry(
+  const usage = isClaudeConfigured() ? emptyUsage("claude", claudeModel()) : emptyUsage("gemini", geminiModel());
+  const askOnce = (): Promise<any> =>
+    pRetry(
       async () => {
         let rawText: string;
         try {
           // Each attempt takes its own paced slot, so retries also respect the quota.
-          const response = await runGeminiCall(
-            () =>
-              ai.models.generateContent({
-                model: "gemini-2.5-flash",
-                contents: [{ role: "user", parts: [{ text: fullPrompt }] }],
-                config: {
-                  responseMimeType: "application/json",
-                  maxOutputTokens: 8192,
-                  abortSignal: signal,
-                  ...thinkingOption(),
-                },
-              }),
-            signal,
-          );
-          rawText = response.text || "{}";
+          rawText = await requestRawText(fullPrompt, lead.name, usage, signal);
         } catch (err) {
           if (signal?.aborted) {
             throw new AbortError(new Error("Qualification cancelled"));
@@ -418,28 +427,62 @@ export async function qualifyLead(
           return parseModelJson(rawText);
         } catch (parseErr) {
           throw new Error(
-            `Gemini returned unparseable response: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}. Raw: ${rawText.slice(0, 200)}`,
+            `The AI (${usage.model}) returned an unparseable response: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}. Raw: ${rawText.slice(0, 200)}`,
           );
         }
       },
       // Free-tier quota resets per minute, so rate-limit waits must be long enough to matter.
       { retries: 4, minTimeout: 3000, maxTimeout: 30000, factor: 2, randomize: true },
     );
+
+  let parsed: any;
+  try {
+    parsed = await askOnce();
   } catch (error) {
     if (signal?.aborted) throw new Error("Qualification cancelled");
-    if (!isRecoverableAiError(error)) throw error;
+    if (!isRecoverableAiError(error)) throw withAiUsage(error, usage);
+    // With Claude, the free scorers are not a fallback: they ranked toy shops above arcades on the
+    // Lyon test, and a wrong score looks like a real one. The lead fails instead, so that a retry
+    // (or the resume after a restart) scores it properly.
+    if (isClaudeConfigured()) {
+      throw withAiUsage(
+        new Error(
+          `Claude unavailable after retries, retry this lead later: ${error instanceof Error ? error.message : String(error)}`,
+        ),
+        usage,
+      );
+    }
     logger.warn(
       { lead: lead.name, error: error instanceof Error ? error.message : String(error) },
       "Managed AI scorer unavailable; using rules-based qualification fallback",
     );
     const fallback = await scoreFree(lead, icp, pages, socialIntel, inferredSource, "ai-unavailable");
+    // Replies that came back unusable were still billed.
+    fallback.aiUsage = usage.calls > 0 ? usage : null;
     cacheQualification(cacheKey, fallback, 5 * 60 * 1000);
     return fallback;
   }
 
   let result: QualifyResult;
   try {
-    const aiPages = typeof parsed.sourceSummary?.pages === "number" ? parsed.sourceSummary.pages : null;
+    // The model reports facts with quotes; the score is computed here from the verified ones.
+    const hasContent = pages.length > 0;
+    let opinions = [scoreOpinion(parsed, icp, leadContext, hasContent)];
+    // The model is not fully repeatable: on repeat runs, clear cases kept their score but some
+    // uncertain ones moved by up to 25 points and changed verdict. An uncertain score gets a
+    // second opinion; if the two verdicts differ, a third decides (the median opinion is kept).
+    if (isUncertainScore(opinions[0].scored.score)) {
+      opinions = await addOpinions(opinions, askOnce, icp, leadContext, hasContent, lead.name, signal);
+    }
+    const chosen = pickOpinion(opinions);
+    parsed = chosen.parsed;
+    const { assessment, scored } = chosen;
+    if (opinions.length > 1) {
+      logger.info(
+        { lead: lead.name, scores: opinions.map((o) => o.scored.score), kept: scored.score },
+        "Uncertain lead re-checked",
+      );
+    }
 
     const venueIntel: VenueIntel | null = parsed.venueIntel
       ? {
@@ -476,32 +519,53 @@ export async function qualifyLead(
         }
       : null;
 
+    const missingSignals = pages.length === 0
+      ? [hasWebsite ? "website could not be crawled" : "no website listed on Google Maps", ...scored.missingSignals]
+      : scored.missingSignals;
+    logger.info(
+      {
+        lead: lead.name,
+        icp: icp.name,
+        score: scored.score,
+        fit: assessment.fit,
+        met: assessment.qualify.filter((s) => s.status === "met").length,
+        disqualified: assessment.disqualify.filter((s) => s.status === "met").length,
+        rejectedQuotes: [...assessment.qualify, ...assessment.disqualify].filter((s) => !s.verified).length,
+      },
+      "Lead scored with AI evidence",
+    );
+
     result = {
-      score: Math.max(0, Math.min(100, Number(parsed.score) || 0)),
-      verdict: parsed.verdict || "BORDERLINE",
-      icpExplanation: parsed.icpExplanation || "No explanation provided.",
-      keySignals: Array.isArray(parsed.keySignals) ? parsed.keySignals.slice(0, 12) : [],
-      missingSignals: Array.isArray(parsed.missingSignals) ? parsed.missingSignals.slice(0, 8) : [],
+      score: scored.score,
+      verdict: scored.verdict,
+      icpExplanation: scored.explanation,
+      keySignals: scored.keySignals,
+      missingSignals: missingSignals.slice(0, 8),
       painPoints: Array.isArray(parsed.painPoints) ? parsed.painPoints.slice(0, 4) : [],
       venueIntel,
       outreachIntel,
       recommendedAction: parsed.recommendedAction || "Review manually.",
       crawledPages: pages.length,
       sourceSummary: {
-        pages: aiPages ?? inferredSource.pages,
+        pages: inferredSource.pages,
         reviews: inferredSource.reviews,
         socials: inferredSource.socials,
       },
       socialProfiles: socialIntel,
       reviewAnalysis: null,
       competitorAnalysis: null,
+      aiUsage: usage,
     };
   } catch (buildErr) {
-    throw new Error(
-      `Gemini response could not be mapped to a qualification: ${buildErr instanceof Error ? buildErr.message : String(buildErr)}`,
+    if (signal?.aborted) throw new Error("Qualification cancelled");
+    throw withAiUsage(
+      new Error(
+        `The AI (${usage.model}) response could not be mapped to a qualification: ${buildErr instanceof Error ? buildErr.message : String(buildErr)}`,
+      ),
+      usage,
     );
   }
 
-  cacheQualification(cacheKey, result);
+  cacheQualification(cacheKey, result, resultCacheTtlMs);
   return result;
 }

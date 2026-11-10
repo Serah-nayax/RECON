@@ -212,13 +212,11 @@ export async function initIcpStore(): Promise<void> {
       logger.info({ count: rows.length, activeId: activeIcpId }, "ICP configs loaded from database");
     }
   } catch (err) {
-    logger.error({ err }, "Failed to load ICP config from DB, using defaults");
-    // Fallback in-memory
-    const fallbackId = randomUUID();
-    const now = new Date().toISOString();
-    const fallback: IcpConfig = { ...DEFAULT_ICP_CORE, id: fallbackId, isActive: true, createdAt: now, updatedAt: now };
-    store.set(fallbackId, fallback);
-    activeIcpId = fallbackId;
+    // No in-memory default: the team's ICP would be silently replaced by the example one.
+    // The startup retries the load instead.
+    store.clear();
+    activeIcpId = null;
+    throw err;
   }
 }
 

@@ -23,11 +23,39 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
+const LOAD_ATTEMPTS = 6;
+
+// A load that fails (DNS hiccup, connection cut) is retried: starting with empty data would show
+// no history and the example ICP, and later saves could build on that. After ~1 min of failures
+// the server stops with a clear message rather than run on partial data.
+async function loadWithRetry(name: string, load: () => Promise<void>): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await load();
+      return;
+    } catch (err) {
+      const message = err instanceof Error ? (err.cause instanceof Error ? err.cause.message : err.message) : String(err);
+      if (attempt >= LOAD_ATTEMPTS) {
+        throw new Error(`Could not load ${name} from the database after ${attempt} tries: ${message}`);
+      }
+      const waitMs = Math.min(2000 * 2 ** (attempt - 1), 20_000);
+      logger.warn({ data: name, attempt, waitMs, error: message }, "Database load failed, retrying");
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
+    }
+  }
+}
+
 async function start() {
-  await initConfigStore();
-  await initIcpStore();
-  await initQualifyStore();
-  await initMapsStore();
+  // Independent tables, loaded side by side: on a slow network the batches and searches
+  // (several MB) took minutes one after the other.
+  const loadStart = Date.now();
+  await Promise.all([
+    loadWithRetry("settings", initConfigStore),
+    loadWithRetry("ICPs", initIcpStore),
+    loadWithRetry("qualify batches", initQualifyStore),
+    loadWithRetry("Maps searches", initMapsStore),
+  ]);
+  logger.info({ ms: Date.now() - loadStart }, "Data loaded from database");
   warmUpIcpScoring();
   preloadGazetteer();
 
@@ -48,7 +76,7 @@ async function start() {
     }
   });
 
-  // Save debounced Maps updates before exiting (Ctrl+C, or closing the console window = SIGHUP).
+  // Save pending Maps and Qualify updates before exiting (Ctrl+C, or closing the console window = SIGHUP).
   let stopping = false;
   for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
     process.on(signal, () => {

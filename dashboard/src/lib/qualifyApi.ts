@@ -152,17 +152,47 @@ export interface LeadResult {
   error: string | null;
   startedAt: string | null;
   completedAt: string | null;
+  aiUsage?: AiUsage | null;
+}
+
+export interface AiUsage {
+  provider: "claude" | "gemini";
+  model: string;
+  calls: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheWriteTokens?: number;
+  cacheReadTokens?: number;
+}
+
+/** AI consumption totals. estimatedCostUsd is an estimate; the provider's console is authoritative. */
+export interface UsageSummary {
+  leadsWithAi: number;
+  calls: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheWriteTokens: number;
+  cacheReadTokens: number;
+  estimatedCostUsd: number;
+  models: string[];
+  unpricedModels: string[];
+}
+
+export interface MonthUsage extends UsageSummary {
+  month: string;
 }
 
 export interface QualifyBatch {
   batchId: string;
-  status: "pending" | "running" | "done" | "failed";
+  /** "cancelled": stopped by the user; its unscored leads are "failed" with "Qualification cancelled". */
+  status: "pending" | "running" | "done" | "failed" | "cancelled";
   icpSnapshot: string;
   leads: LeadResult[];
   createdAt: string;
   updatedAt: string;
   completedCount: number;
   totalCount: number;
+  usage?: UsageSummary;
 }
 
 export const icpApi = {
@@ -193,6 +223,7 @@ export const qualifyApi = {
     apiFetch<{ batches: Omit<QualifyBatch, "leads">[] }>("/api/qualify"),
   stopBatch: (batchId: string) =>
     apiFetch<{ ok: boolean }>(`/api/qualify/${batchId}/stop`, { method: "POST" }),
+  usageByMonth: () => apiFetch<{ months: MonthUsage[] }>("/api/qualify/usage"),
   retryBatch: (batchId: string) =>
     apiFetch<{ batchId: string; status: string; totalCount: number; message: string }>(
       `/api/qualify/${batchId}/retry`,

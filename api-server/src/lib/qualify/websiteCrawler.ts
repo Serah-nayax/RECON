@@ -178,9 +178,9 @@ export async function crawlSite(
   const pages: PageData[] = [];
   const visited = new Set<string>();
 
-  const normalizedStart = startUrl.startsWith("http")
-    ? startUrl
-    : `https://${startUrl}`;
+  const withScheme = startUrl.trim().startsWith("http") ? startUrl.trim() : `https://${startUrl.trim()}`;
+  // Typed-in lists have "wwww." or "ww." hosts that do not resolve; the site is at "www.".
+  const normalizedStart = withScheme.replace(/^(https?:\/\/)w{2,}\./i, (_m, scheme: string) => `${scheme}www.`);
 
   try {
     new URL(normalizedStart);

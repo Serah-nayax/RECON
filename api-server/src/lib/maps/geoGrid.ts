@@ -22,6 +22,10 @@ export interface GridCell {
   pageCutRetried?: boolean;
   /** Places this cell found first (not already listed by an earlier cell): what the search added. */
   newLeads?: number;
+  /** Of the places listed here (in the area), those whose category or name says what was searched. */
+  matchPlaces?: number;
+  /** Of newLeads, those that say what was searched. */
+  newMatches?: number;
   /** Time spent scraping this cell, kept with the job to see where a search's time goes. */
   durationMs?: number;
   /** Where that time went (navigation, feed, scroll, replay…), to tune speed from real runs. */

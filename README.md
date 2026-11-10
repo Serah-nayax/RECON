@@ -22,9 +22,9 @@
 
 1. **Maps Search.** Pick an area (a city, a département, a whole country, or draw a box) and type what you look for ("arcade", "bowling alley"). RECON cuts the area into cells, searches Google Maps in each one and collects every place: name, category, address, rating, reviews, and optionally phone, website and hours.
 2. **Lead Qualifier.** Send the places found (or upload a CSV / Excel list). RECON reads each website and scores the lead 0–100 against the active ICP, with a verdict (QUALIFY, BORDERLINE, DISQUALIFY) and the evidence it found.
-3. **Export.** Download the leads as CSV / Excel, or push qualified leads to HubSpot or Salesforce.
+3. **Export.** Download the places or the scored leads as CSV / Excel, or push qualified leads to HubSpot or Salesforce.
 
-RECON is **free to run**: no paid API is needed. Google Maps is read with a local headless browser, area outlines come from OpenStreetMap and GeoNames, and leads are scored by a small model that runs on your machine. Gemini can be switched on for qualification and term translation, but it is optional.
+Maps Search is **free to run**: Google Maps is read with a local headless browser, and area outlines come from OpenStreetMap and GeoNames. For Qualify, **Claude Haiku is the recommended scorer** (`RECON_ENABLE_CLAUDE=1`, about $1.30 for 850 leads in November 2026, see [setup](docs/setup.md#optional-ai-claude-recommended-for-qualify)). Without AI, leads are scored by a small free model that runs on your machine, but it was not reliable enough on real lists. Gemini is another option.
 
 ## Quick start (Windows)
 
@@ -41,6 +41,7 @@ Full setup, configuration and troubleshooting: [docs/setup.md](docs/setup.md).
 
 | Guide | What it covers |
 |---|---|
+| [Strategy and decisions](docs/strategy.md) | What we chose and why, what we measured, what is left |
 | [Setup](docs/setup.md) | Install, configuration variables, shared server, troubleshooting |
 | [Maps search](docs/maps-search.md) | How a search works, what is listed or hidden, limits and speed |
 | [Qualify and ICPs](docs/qualify.md) | How leads are scored, ICP library, current limits |
@@ -56,7 +57,7 @@ RECON/
 │       ├── routes/      HTTP routes (/api/maps, /api/qualify, /api/icp, /api/crm, /api/config)
 │       └── lib/
 │           ├── maps/    Google Maps search: areas, grid, crawler, job runner
-│           └── qualify/ Website crawler, scoring (local model, rules, Gemini), batches
+│           └── qualify/ Website crawler, scoring (Claude, Gemini, local model, rules), batches
 ├── dashboard/           React + Vite web app
 ├── lib/
 │   ├── db/              Database schema (Drizzle ORM, PostgreSQL)

@@ -241,37 +241,68 @@ function buildParsedFile(wb: XLSX.WorkBook, sheetName: string): ParsedFile {
   return { sheetNames: wb.SheetNames, activeSheet: sheetName, rows, headers, summary, leads };
 }
 
-function parseCSVText(text: string): ParsedFile {
-  const lines = text.trim().split(/\r?\n/).filter(Boolean);
-  if (lines.length < 2) return { sheetNames: [], activeSheet: "", rows: [], headers: [], summary: { colMap: { name: -1, url: -1, category: -1, city: -1, state: -1, country: -1, notes: -1, extraNotes: [] }, headers: [], mappedFields: [], notesHeaders: [], unmappedCount: 0 }, leads: [] };
+/**
+ * The delimiter most used in the header line, outside quotes. French Excel saves CSV with ";"
+ * (the comma is the decimal separator), other tools with "," or tabs.
+ */
+function detectCsvDelimiter(text: string): string {
+  const counts: Record<string, number> = { ",": 0, ";": 0, "\t": 0 };
+  let inQ = false;
+  for (const ch of text) {
+    if (ch === '"') inQ = !inQ;
+    else if (!inQ && (ch === "\n" || ch === "\r")) break;
+    else if (!inQ && ch in counts) counts[ch]++;
+  }
+  const [best, count] = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+  return count > 0 ? best : ",";
+}
 
-  // Auto-detect delimiter: tab-separated if tabs outnumber commas in header line
-  const firstLine = lines[0];
-  const tabCount = (firstLine.match(/\t/g) || []).length;
-  const commaCount = (firstLine.match(/,/g) || []).length;
-  const delim = tabCount > commaCount ? "\t" : ",";
-
-  const splitLine = (line: string): string[] => {
-    if (delim === "\t") return line.split("\t").map((c) => c.trim().replace(/^"|"$/g, ""));
-    const result: string[] = [];
-    let cur = "", inQ = false;
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
-      if (ch === '"') {
-        if (inQ && line[i + 1] === '"') { cur += '"'; i++; }
-        else inQ = !inQ;
-      } else if (ch === "," && !inQ) {
-        result.push(cur.trim()); cur = "";
-      } else {
-        cur += ch;
-      }
+/** CSV records with quoted fields, "" escapes and line breaks inside quotes (RFC 4180). */
+function splitCsvRecords(text: string): string[][] {
+  const delim = detectCsvDelimiter(text);
+  const records: string[][] = [];
+  let record: string[] = [];
+  let cur = "";
+  let inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQ) {
+      if (ch === '"' && text[i + 1] === '"') { cur += '"'; i++; }
+      else if (ch === '"') inQ = false;
+      else cur += ch;
+    } else if (ch === '"') {
+      inQ = true;
+    } else if (ch === delim) {
+      record.push(cur.trim()); cur = "";
+    } else if (ch === "\n" || ch === "\r") {
+      if (ch === "\r" && text[i + 1] === "\n") i++;
+      record.push(cur.trim()); cur = "";
+      if (record.some((c) => c !== "")) records.push(record);
+      record = [];
+    } else {
+      cur += ch;
     }
-    result.push(cur.trim());
-    return result;
-  };
+  }
+  record.push(cur.trim());
+  if (record.some((c) => c !== "")) records.push(record);
+  return records;
+}
 
-  const headers = splitLine(lines[0]).map((h) => h.trim());
-  const rows = lines.slice(1).map(splitLine).filter((r) => r.some((c) => c.trim() !== ""));
+/** UTF-8 when the bytes are valid UTF-8, else Windows-1252 (Excel "CSV" on a French Windows). */
+function decodeCsvBytes(bytes: Uint8Array): string {
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return new TextDecoder("windows-1252").decode(bytes);
+  }
+}
+
+function parseCSVText(text: string): ParsedFile {
+  const records = splitCsvRecords(text.replace(/^﻿/, ""));
+  if (records.length < 2) return { sheetNames: [], activeSheet: "", rows: [], headers: [], summary: { colMap: { name: -1, url: -1, category: -1, city: -1, state: -1, country: -1, notes: -1, extraNotes: [] }, headers: [], mappedFields: [], notesHeaders: [], unmappedCount: 0 }, leads: [] };
+
+  const headers = records[0].map((h) => h.trim());
+  const rows = records.slice(1).filter((r) => r.some((c) => c.trim() !== ""));
   const summary = detectColumns(headers, rows);
   const leads = rows.map((r) => rowToLead(r, summary)).filter(Boolean) as LeadInput[];
 
@@ -906,7 +937,11 @@ function LeadIntelPanel({ lead }: { lead: LeadResult }) {
   );
 }
 
-function StatusIcon({ status }: { status: LeadResult["status"] }) {
+function StatusIcon({ status, error }: { status: LeadResult["status"]; error?: string | null }) {
+  // A lead left unscored by a stop is not an error: grey, like a lead still waiting.
+  if (status === "failed" && error === "Qualification cancelled") {
+    return <Square className="h-4 w-4 text-muted-foreground shrink-0" />;
+  }
   switch (status) {
     case "done":    return <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />;
     case "failed":  return <XCircle className="h-4 w-4 text-rose-500 shrink-0" />;
@@ -956,7 +991,7 @@ function LeadRow({
       <tr className="border-b border-muted/40 hover:bg-muted/10 cursor-pointer transition-colors" onClick={() => setExpanded(!expanded)}>
         <td className="py-3 px-4">
           <div className="flex items-center gap-2">
-            <StatusIcon status={lead.status} />
+            <StatusIcon status={lead.status} error={lead.error} />
             <div className="min-w-0">
               <p className="font-medium text-sm">{lead.input.name}</p>
               {lead.input.url && (
@@ -1111,9 +1146,17 @@ export function Qualify() {
     enabled: !!activeBatchId,
     refetchInterval: (query) => {
       const d = query.state.data;
-      return !d || d.status === "done" || d.status === "failed" ? false : 2000;
+      return !d || d.status === "done" || d.status === "failed" || d.status === "cancelled" ? false : 2000;
     },
   });
+
+  // Monthly AI consumption; refetched when the batch status changes (e.g. when it finishes).
+  const { data: usageByMonth } = useQuery({
+    queryKey: ["qualify-usage", batch?.status],
+    queryFn: qualifyApi.usageByMonth,
+  });
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  const monthUsage = usageByMonth?.months.find((m) => m.month === currentMonth);
 
   const submitMutation = useMutation({
     mutationFn: (l: LeadInput[]) => qualifyApi.submit(l),
@@ -1173,11 +1216,11 @@ export function Qualify() {
     } else {
       const reader = new FileReader();
       reader.onload = (e) => {
-        const text = e.target?.result as string;
+        const text = decodeCsvBytes(new Uint8Array(e.target?.result as ArrayBuffer));
         setWorkbook(null);
         applyParsed(parseCSVText(text));
       };
-      reader.readAsText(file);
+      reader.readAsArrayBuffer(file);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [toast]);
@@ -1241,7 +1284,8 @@ export function Qualify() {
     }
   };
 
-  const isDone = batch?.status === "done" || batch?.status === "failed";
+  const isDone = batch?.status === "done" || batch?.status === "failed" || batch?.status === "cancelled";
+  const isStopped = batch?.status === "cancelled";
   const progress = batch ? Math.round((batch.completedCount / batch.totalCount) * 100) : 0;
   const qualifyCount    = batch?.leads.filter((l) => l.verdict === "QUALIFY").length    ?? 0;
   const borderlineCount = batch?.leads.filter((l) => l.verdict === "BORDERLINE").length ?? 0;
@@ -1424,9 +1468,15 @@ export function Qualify() {
             <CardContent className="pt-4">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-3">
-                  {!isDone ? <Loader2 className="h-5 w-5 animate-spin text-primary" /> : <CheckCircle2 className="h-5 w-5 text-emerald-500" />}
+                  {!isDone
+                    ? <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                    : isStopped
+                      ? <Square className="h-5 w-5 text-amber-400 fill-current" />
+                      : <CheckCircle2 className="h-5 w-5 text-emerald-500" />}
                   <div>
-                    <p className="font-mono font-bold text-sm">{isDone ? "QUALIFICATION COMPLETE" : "QUALIFYING LEADS..."}</p>
+                    <p className="font-mono font-bold text-sm">
+                      {!isDone ? "QUALIFYING LEADS..." : isStopped ? "QUALIFICATION STOPPED" : "QUALIFICATION COMPLETE"}
+                    </p>
                     <p className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
                       <span>{batch.completedCount} / {batch.totalCount} processed</span>
                       {batch.icpSnapshot && <span className="text-primary">[ {batch.icpSnapshot} ]</span>}
@@ -1514,7 +1564,7 @@ export function Qualify() {
                       {retryMutation.isPending
                         ? <Loader2 className="h-3 w-3 mr-1 animate-spin" />
                         : <RotateCcw className="h-3 w-3 mr-1" />}
-                      RETRY INCOMPLETE
+                      {isStopped ? "RESUME UNSCORED" : "RETRY INCOMPLETE"}
                     </Button>
                   )}
                   <Button
@@ -1564,6 +1614,27 @@ export function Qualify() {
                   <p className={`text-[10px] mt-0.5 uppercase tracking-wider ${batch.completedCount > 0 ? "text-violet-400/70" : "text-muted-foreground"}`}>Processed</p>
                 </div>
               </div>
+              {/* AI consumption: estimate from token counts; the provider console is authoritative. */}
+              {((batch.usage?.calls ?? 0) > 0 || (monthUsage?.calls ?? 0) > 0) && (
+                <div className="mt-3 text-[11px] text-muted-foreground font-mono space-y-0.5">
+                  {batch.usage && batch.usage.calls > 0 && (
+                    <p>
+                      AI this batch: {batch.usage.calls} calls · {batch.usage.inputTokens.toLocaleString()} in / {batch.usage.outputTokens.toLocaleString()} out tokens
+                      {(batch.usage.cacheReadTokens ?? 0) + (batch.usage.cacheWriteTokens ?? 0) > 0 &&
+                        ` · cache ${(batch.usage.cacheReadTokens ?? 0).toLocaleString()} read / ${(batch.usage.cacheWriteTokens ?? 0).toLocaleString()} written`}
+                      {` · ≈ $${batch.usage.estimatedCostUsd.toFixed(3)}`}
+                      {batch.usage.leadsWithAi > 0 && ` (≈ $${(batch.usage.estimatedCostUsd / batch.usage.leadsWithAi).toFixed(4)} / lead)`}
+                      {batch.usage.models.length > 0 && ` · ${batch.usage.models.join(", ")}`}
+                    </p>
+                  )}
+                  {monthUsage && monthUsage.calls > 0 && (
+                    <p>
+                      AI this month: {monthUsage.leadsWithAi} leads · {monthUsage.calls} calls · ≈ ${monthUsage.estimatedCostUsd.toFixed(2)}
+                      {monthUsage.unpricedModels.length > 0 && ` (no price for ${monthUsage.unpricedModels.join(", ")})`}
+                    </p>
+                  )}
+                </div>
+              )}
             </CardContent>
           </Card>
 

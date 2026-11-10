@@ -5,7 +5,7 @@ import { qualifyApi } from "@/lib/qualifyApi";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Target, ArrowRight, CheckCircle2, XCircle, Clock, AlertCircle } from "lucide-react";
+import { Loader2, Target, ArrowRight, CheckCircle2, XCircle, Clock, AlertCircle, Square } from "lucide-react";
 
 function StatusBadge({ status }: { status: string }) {
   switch (status) {
@@ -15,6 +15,8 @@ function StatusBadge({ status }: { status: string }) {
       return <Badge className="bg-blue-500/15 text-blue-400 border-blue-500/30 border font-mono text-[11px] animate-pulse">RUNNING</Badge>;
     case "failed":
       return <Badge className="bg-rose-500/15 text-rose-400 border-rose-500/30 border font-mono text-[11px]">FAILED</Badge>;
+    case "cancelled":
+      return <Badge className="bg-amber-500/15 text-amber-400 border-amber-500/30 border font-mono text-[11px]">STOPPED</Badge>;
     case "pending":
     default:
       return <Badge variant="outline" className="text-muted-foreground font-mono text-[11px]">PENDING</Badge>;
@@ -24,6 +26,7 @@ function StatusBadge({ status }: { status: string }) {
 function BatchStatusIcon({ status }: { status: string }) {
   if (status === "done") return <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />;
   if (status === "failed") return <XCircle className="h-4 w-4 text-rose-400 shrink-0" />;
+  if (status === "cancelled") return <Square className="h-4 w-4 text-amber-400 shrink-0" />;
   if (status === "running") return <Loader2 className="h-4 w-4 text-blue-400 shrink-0 animate-spin" />;
   return <Clock className="h-4 w-4 text-muted-foreground shrink-0" />;
 }

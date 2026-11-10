@@ -1,13 +1,16 @@
 import { getBatch, isBatchCancelled, onBatchCancelled, updateBatch, updateLead } from "./qualifyStore.js";
 import { getIcp } from "../icpStore.js";
-import { qualifyLead } from "./qualifyLead.js";
+import { aiUsageOfError, qualifyLead } from "./qualifyLead.js";
 import { logger } from "../logger.js";
+import { isClaudeConfigured } from "./claudeClient.js";
 
 // Leads run in parallel even with Gemini: crawling is plain HTTP, and the free-tier quota is
 // enforced per AI call (geminiLimiter.ts). Before, one lead at a time meant every crawl also
 // waited for the previous lead's AI call. Without AI, 16 leads at once (~48 page fetches beside
-// the local scoring model) left half the sites of a 44-lead batch unread on timeouts.
-export const QUALIFY_CONCURRENCY = Number(process.env.QUALIFY_CONCURRENCY ?? 8);
+// the local scoring model) left half the sites of a 44-lead batch unread on timeouts. With Claude
+// the scoring runs off this machine and the key allows far more requests (45,000 a minute), so
+// 16 leads run at once: a 500-place search qualifies in about half the time, at the same cost.
+export const QUALIFY_CONCURRENCY = Number(process.env.QUALIFY_CONCURRENCY ?? (isClaudeConfigured() ? 16 : 8));
 let availableQualificationSlots = QUALIFY_CONCURRENCY;
 const qualificationWaiters: Array<{
   resolve: () => void;
@@ -112,6 +115,7 @@ export async function runQualifyBatch(batchId: string): Promise<void> {
                 socialProfiles: result.socialProfiles,
                 reviewAnalysis: result.reviewAnalysis,
                 competitorAnalysis: result.competitorAnalysis,
+                aiUsage: result.aiUsage ?? null,
                 completedAt: new Date().toISOString(),
               });
 
@@ -124,20 +128,22 @@ export async function runQualifyBatch(batchId: string): Promise<void> {
               updateLead(batchId, lead.leadId, {
                 status: "failed",
                 error: message,
+                // Calls made before the failure were billed: keep them in the batch and month costs.
+                aiUsage: aiUsageOfError(err),
                 completedAt: new Date().toISOString(),
               });
             }
           } finally {
             unregisterCancellation();
             releaseSlot?.();
-          }
-
-          activeCount--;
-          processNext();
-
-          const currentBatch = getBatch(batchId);
-          if (currentBatch && currentBatch.completedCount === currentBatch.totalCount) {
-            resolve();
+            // In finally: a lead stopped by a cancel returns early and must still free its place,
+            // or the batch run never ends.
+            activeCount--;
+            processNext();
+            const currentBatch = getBatch(batchId);
+            if (currentBatch && currentBatch.completedCount === currentBatch.totalCount) {
+              resolve();
+            }
           }
         })();
       }

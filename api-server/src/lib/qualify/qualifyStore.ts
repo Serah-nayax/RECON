@@ -1,7 +1,8 @@
 import { randomUUID } from "crypto";
 import { db, qualifyBatches } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { logger } from "../logger.js";
+import type { AiUsage } from "./aiUsage.js";
 
 // Review and competitor analyses: made by an earlier version of the qualifier (with Gemini).
 // No longer produced (always null), kept so that older batches still display them.
@@ -59,7 +60,19 @@ export interface CompetitorAnalysis {
 }
 
 export type LeadStatus = "pending" | "crawling" | "scoring" | "done" | "failed";
-export type BatchStatus = "pending" | "running" | "done" | "failed";
+/** "cancelled": stopped by the user. Its unscored leads are "failed" with CANCELLED_ERROR. */
+export type BatchStatus = "pending" | "running" | "done" | "failed" | "cancelled";
+
+export const CANCELLED_ERROR = "Qualification cancelled";
+
+function isCancelledLead(lead: LeadResult): boolean {
+  return lead.status === "failed" && lead.error === CANCELLED_ERROR;
+}
+
+/** Leads really processed: scored or failed, not the ones left unscored by a stop. */
+function processedCount(leads: LeadResult[]): number {
+  return leads.filter((l) => (l.status === "done" || l.status === "failed") && !isCancelledLead(l)).length;
+}
 
 export interface LeadInput {
   name: string;
@@ -133,6 +146,8 @@ export interface LeadResult {
   error: string | null;
   startedAt: string | null;
   completedAt: string | null;
+  /** AI tokens used for this lead. Missing on leads qualified before tracking existed. */
+  aiUsage?: AiUsage | null;
 }
 
 export interface QualifyBatch {
@@ -171,15 +186,16 @@ export function cancelBatch(batchId: string): boolean {
   for (const listener of cancellationListeners.get(batchId) ?? []) listener();
   cancellationListeners.delete(batchId);
   const now = new Date().toISOString();
-  batch.status = "failed";
+  batch.status = "cancelled";
   for (const lead of batch.leads) {
     if (lead.status !== "done" && lead.status !== "failed") {
       lead.status = "failed";
-      lead.error = "Qualification cancelled";
+      lead.error = CANCELLED_ERROR;
       lead.completedAt = now;
     }
   }
-  batch.completedCount = batch.totalCount;
+  // "53 / 306 processed", not "306 / 306": the stopped leads were never scored.
+  batch.completedCount = processedCount(batch.leads);
   batch.updatedAt = now;
   store.set(batchId, batch);
   void persistBatch(batch);
@@ -190,70 +206,139 @@ export function isBatchCancelled(batchId: string): boolean {
   return cancelledBatches.has(batchId);
 }
 
-// Each update rewrites the whole batch row (every lead), so coalesce bursts into one
-// write per batch every PERSIST_DEBOUNCE_MS, one write at a time per batch (same
-// approach as mapsStore).
-const PERSIST_DEBOUNCE_MS = 2000;
-const persistTimers = new Map<string, NodeJS.Timeout>();
+// Saving. A batch row holds every lead (a 250-lead batch is ~1 MB), so rewriting it on each
+// update fell minutes behind on a slow network: a server killed mid-batch lost the leads finished
+// since the last write, and paid their AI calls again on resume. Now a lead update sends only that
+// lead (jsonb_set), and a finished lead is saved within FINISHED_LEAD_DELAY_MS. Whole-row writes
+// remain for new, cancelled and batch-level updates. One write at a time per batch, in order.
+const PROGRESS_DELAY_MS = 2000; // crawling / scoring status: not worth a write each
+const FINISHED_LEAD_DELAY_MS = 300; // a result that cost an AI call
+const PERSIST_RETRY_MS = 30_000;
+const PERSIST_MAX_RETRIES = 60; // 30 minutes of outage
+const MAX_LEADS_PER_PATCH = 50; // past this, one whole-row write is simpler
+
+interface DirtyState {
+  full: boolean;
+  leads: Set<number>;
+}
+const dirty = new Map<string, DirtyState>();
+const persistTimers = new Map<string, { timer: NodeJS.Timeout; due: number }>();
 const persistChains = new Map<string, Promise<void>>();
+const persistFailures = new Map<string, number>();
+
+function markDirty(batchId: string, leadIndex?: number): void {
+  const state = dirty.get(batchId) ?? { full: false, leads: new Set<number>() };
+  if (leadIndex === undefined) state.full = true;
+  else state.leads.add(leadIndex);
+  dirty.set(batchId, state);
+}
 
 function queuePersist(batchId: string): void {
-  const batch = store.get(batchId);
-  if (!batch) return;
-  const next = (persistChains.get(batchId) ?? Promise.resolve()).then(() => persistBatch(batch));
+  const next = (persistChains.get(batchId) ?? Promise.resolve()).then(() => writeDirty(batchId));
   persistChains.set(batchId, next);
   void next.finally(() => {
     if (persistChains.get(batchId) === next) persistChains.delete(batchId);
   });
 }
 
-function schedulePersist(batchId: string): void {
-  if (persistTimers.has(batchId)) return;
-  persistTimers.set(
-    batchId,
-    setTimeout(() => {
+/** Writes the batch's pending changes within `delayMs` (sooner if already planned sooner). */
+function schedulePersist(batchId: string, delayMs: number): void {
+  const due = Date.now() + delayMs;
+  const planned = persistTimers.get(batchId);
+  if (planned && planned.due <= due) return;
+  if (planned) clearTimeout(planned.timer);
+  persistTimers.set(batchId, {
+    due,
+    timer: setTimeout(() => {
       persistTimers.delete(batchId);
       queuePersist(batchId);
-    }, PERSIST_DEBOUNCE_MS),
-  );
+    }, delayMs),
+  });
 }
 
-/** Writes every pending debounced update now; call before the process exits. */
+/** Writes every pending update now; call before the process exits. */
 export async function flushQualifyStore(): Promise<void> {
-  for (const [batchId, timer] of persistTimers) {
-    clearTimeout(timer);
+  for (const [batchId, planned] of persistTimers) {
+    clearTimeout(planned.timer);
     persistTimers.delete(batchId);
-    queuePersist(batchId);
   }
+  for (const batchId of dirty.keys()) queuePersist(batchId);
   await Promise.all(persistChains.values());
 }
 
-async function persistBatch(batch: QualifyBatch): Promise<void> {
+async function writeDirty(batchId: string): Promise<void> {
+  const batch = store.get(batchId);
+  const state = dirty.get(batchId);
+  if (!batch || !state) return;
+  dirty.delete(batchId);
   try {
-    await db
-      .insert(qualifyBatches)
-      .values({
-        batchId: batch.batchId,
+    const patched = !state.full && state.leads.size <= MAX_LEADS_PER_PATCH && (await patchLeads(batch, state.leads));
+    if (!patched) await writeWholeBatch(batch);
+    persistFailures.delete(batchId);
+  } catch (err) {
+    // Keep the changes and try again later: a network drop must not leave the saved batch stale.
+    const pending = dirty.get(batchId);
+    if (pending) {
+      pending.full ||= state.full;
+      for (const index of state.leads) pending.leads.add(index);
+    } else {
+      dirty.set(batchId, state);
+    }
+    const failures = (persistFailures.get(batchId) ?? 0) + 1;
+    persistFailures.set(batchId, failures);
+    const cause = err instanceof Error ? String((err as { cause?: unknown }).cause ?? err.message).slice(0, 200) : String(err);
+    logger.error({ batchId, failures, cause }, "Failed to save qualify batch, retrying in 30s");
+    if (failures <= PERSIST_MAX_RETRIES) schedulePersist(batchId, PERSIST_RETRY_MS);
+  }
+}
+
+/** Sends only the changed leads. Returns false if the row is not in the database yet. */
+async function patchLeads(batch: QualifyBatch, indexes: Set<number>): Promise<boolean> {
+  let leads = sql`${sql.identifier("leads")}`;
+  for (const index of indexes) {
+    leads = sql`jsonb_set(${leads}, ${`{${index}}`}::text[], ${JSON.stringify(batch.leads[index])}::jsonb)`;
+  }
+  const updated = await db
+    .update(qualifyBatches)
+    .set({
+      leads,
+      status: batch.status,
+      completedCount: batch.completedCount,
+      updatedAt: new Date(batch.updatedAt),
+    })
+    .where(eq(qualifyBatches.batchId, batch.batchId))
+    .returning({ batchId: qualifyBatches.batchId });
+  return updated.length > 0;
+}
+
+/** Writes a batch now, in its own place in the batch's write order. */
+function persistBatch(batch: QualifyBatch): void {
+  markDirty(batch.batchId);
+  queuePersist(batch.batchId);
+}
+
+async function writeWholeBatch(batch: QualifyBatch): Promise<void> {
+  await db
+    .insert(qualifyBatches)
+    .values({
+      batchId: batch.batchId,
+      status: batch.status,
+      icpSnapshot: batch.icpSnapshot,
+      leads: batch.leads as unknown as Record<string, unknown>[],
+      createdAt: new Date(batch.createdAt),
+      updatedAt: new Date(batch.updatedAt),
+      completedCount: batch.completedCount,
+      totalCount: batch.totalCount,
+    })
+    .onConflictDoUpdate({
+      target: qualifyBatches.batchId,
+      set: {
         status: batch.status,
-        icpSnapshot: batch.icpSnapshot,
         leads: batch.leads as unknown as Record<string, unknown>[],
-        createdAt: new Date(batch.createdAt),
         updatedAt: new Date(batch.updatedAt),
         completedCount: batch.completedCount,
-        totalCount: batch.totalCount,
-      })
-      .onConflictDoUpdate({
-        target: qualifyBatches.batchId,
-        set: {
-          status: batch.status,
-          leads: batch.leads as unknown as Record<string, unknown>[],
-          updatedAt: new Date(batch.updatedAt),
-          completedCount: batch.completedCount,
-        },
-      });
-  } catch (err) {
-    logger.error({ err, batchId: batch.batchId }, "Failed to persist batch to DB");
-  }
+      },
+    });
 }
 
 const interruptedBatchIds: string[] = [];
@@ -267,13 +352,21 @@ export async function initQualifyStore(): Promise<void> {
   try {
     const rows = await db.select().from(qualifyBatches);
     for (const row of rows) {
-      const status = row.status as BatchStatus;
       const leads = row.leads as unknown as LeadResult[];
-      // Batches cut off by a restart are resumed at startup; their in-flight leads restart.
+      // Batches stopped before the "cancelled" status existed were saved as "failed".
+      const status: BatchStatus = row.status === "failed" && leads.some(isCancelledLead)
+        ? "cancelled"
+        : (row.status as BatchStatus);
+      // Batches cut off by a restart are resumed at startup. Their in-flight leads restart, and so
+      // do their failed ones: a lead fails on a passing error (AI or network down), worth a retry.
       if (status === "pending" || status === "running") {
         interruptedBatchIds.push(row.batchId);
         for (const lead of leads) {
-          if (lead.status !== "done" && lead.status !== "failed") lead.status = "pending";
+          if (lead.status !== "done") {
+            lead.status = "pending";
+            lead.error = null;
+            lead.completedAt = null;
+          }
         }
       }
       store.set(row.batchId, {
@@ -283,13 +376,16 @@ export async function initQualifyStore(): Promise<void> {
         leads,
         createdAt: row.createdAt.toISOString(),
         updatedAt: row.updatedAt.toISOString(),
-        completedCount: row.completedCount,
+        completedCount: processedCount(leads),
         totalCount: row.totalCount,
       });
     }
     logger.info({ count: rows.length }, "Qualify batches loaded from database");
   } catch (err) {
-    logger.error({ err }, "Failed to load qualify batches from DB");
+    // Starting with an empty history would look like lost batches: the startup retries instead.
+    store.clear();
+    interruptedBatchIds.length = 0;
+    throw err;
   }
 }
 
@@ -348,7 +444,8 @@ export function updateBatch(batchId: string, updates: Partial<QualifyBatch>): vo
   const batch = store.get(batchId);
   if (!batch) return;
   Object.assign(batch, updates, { updatedAt: new Date().toISOString() });
-  schedulePersist(batchId);
+  markDirty(batchId);
+  schedulePersist(batchId, FINISHED_LEAD_DELAY_MS);
 }
 
 export function updateLead(
@@ -358,8 +455,9 @@ export function updateLead(
 ): void {
   const batch = store.get(batchId);
   if (!batch) return;
-  const lead = batch.leads.find((l) => l.leadId === leadId);
-  if (!lead) return;
+  const index = batch.leads.findIndex((l) => l.leadId === leadId);
+  if (index < 0) return;
+  const lead = batch.leads[index];
   Object.assign(lead, updates);
 
   const done = batch.leads.filter((l) => l.status === "done" || l.status === "failed").length;
@@ -372,5 +470,7 @@ export function updateLead(
     batch.status = "running";
   }
 
-  schedulePersist(batchId);
+  markDirty(batchId, index);
+  const finished = lead.status === "done" || lead.status === "failed";
+  schedulePersist(batchId, finished ? FINISHED_LEAD_DELAY_MS : PROGRESS_DELAY_MS);
 }

@@ -19,7 +19,9 @@ export async function initConfigStore(): Promise<void> {
     }
     logger.info({ count: rows.length }, "Platform config loaded from DB");
   } catch (err) {
-    logger.error({ err }, "Failed to load platform config from DB");
+    // Saved settings (CRM keys…) would silently look unset: the startup retries instead.
+    cache.clear();
+    throw err;
   }
 }
 

@@ -163,6 +163,9 @@ export const mapsApi = {
   listJobs: () => apiFetch<{ jobs: Omit<MapsJob, "results" | "cells">[] }>("/api/maps"),
   pause: (jobId: string) =>
     apiFetch<{ ok: boolean }>(`/api/maps/${jobId}/pause`, { method: "POST" }),
+  /** Deletes a search that is not running, for everyone. */
+  remove: (jobId: string) =>
+    apiFetch<{ ok: boolean }>(`/api/maps/${jobId}`, { method: "DELETE" }),
   resume: (jobId: string) =>
     apiFetch<{ jobId: string; status: string; message: string }>(
       `/api/maps/${jobId}/resume`,

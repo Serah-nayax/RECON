@@ -292,6 +292,19 @@ Local search term:`,
 }
 
 /**
+ * The English synonyms of a term in the dictionary ("laser tag" → "laser game"), whatever the
+ * area: a drawn area has no country, so no translation, but "Laser Games" still names a laser tag
+ * venue. Only used to sort places; never searched.
+ */
+export function termSynonyms(term: string): string[] {
+  const entry = DICTIONARY[normalise(term)];
+  if (!entry) return [];
+  return Object.keys(DICTIONARY).filter(
+    (key) => DICTIONARY[key] === entry && key !== normalise(term) && key.length >= 4,
+  );
+}
+
+/**
  * Every term to search in the area: each term's local-language versions (one per language
  * spoken there), then the term as typed. In Japan "laser tag, go-kart track" becomes
  * レーザータグ, laser tag, ゴーカート, go-kart track.

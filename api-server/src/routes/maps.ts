@@ -9,6 +9,8 @@ import {
   listMapsJobs,
   updateMapsJob,
   pauseMapsJob,
+  deleteMapsJob,
+  termYield,
   type MapsJob,
 } from "../lib/maps/mapsStore.js";
 import { generateSmartGrid, generateGridFromBbox, type AreaInput, type GridCell, type MapsScope } from "../lib/maps/geoGrid.js";
@@ -18,8 +20,9 @@ import { ALL_FIELDS, type MapsField, type MapsLead } from "../lib/maps/googleMap
 import { getIcp } from "../lib/icpStore.js";
 import { createBatch } from "../lib/qualify/qualifyStore.js";
 import { runQualifyBatch } from "../lib/qualify/qualifyRunner.js";
-import { localiseTerms } from "../lib/maps/translateTerms.js";
-import { placeRelevance, type PlaceRelevance } from "../lib/maps/searchProfile.js";
+import { localiseTerms, termSynonyms } from "../lib/maps/translateTerms.js";
+import { type PlaceRelevance } from "../lib/maps/searchProfile.js";
+import { relevanceOf, relevanceTerms } from "../lib/maps/relevance.js";
 import { MAX_JOB_CELLS, startMapsJob } from "../lib/maps/mapsJobRunner.js";
 
 const router: IRouter = Router();
@@ -207,19 +210,6 @@ router.post("/maps/preview-grid", async (req, res) => {
 });
 
 
-/** Terms typed by the user (with their translations), and the Google categories the job added. */
-function relevanceTerms(job: MapsJob): { userTerms: string[]; autoTerms: string[] } {
-  const userTerms = new Set<string>([job.config.searchTerm, ...(job.config.label ?? "").split(",")]);
-  const autoTerms = new Set<string>();
-  for (const cell of job.cells) {
-    if (cell.searchTerm) (cell.autoTerm ? autoTerms : userTerms).add(cell.searchTerm);
-  }
-  return {
-    userTerms: [...userTerms].map((t) => t.trim()).filter(Boolean),
-    autoTerms: [...autoTerms],
-  };
-}
-
 const RELEVANCE_RANK: Record<PlaceRelevance, number> = { match: 0, other: 1, offTopic: 2 };
 
 /**
@@ -227,8 +217,8 @@ const RELEVANCE_RANK: Record<PlaceRelevance, number> = { match: 0, other: 1, off
  * (the rule can change, and they can be checked) but are left out of the list, export and qualifying.
  */
 function withRelevance(job: MapsJob): (MapsLead & { relevance: PlaceRelevance })[] {
-  const { userTerms, autoTerms } = relevanceTerms(job);
-  return job.results.map((lead) => ({ ...lead, relevance: placeRelevance(lead, userTerms, autoTerms) }));
+  const terms = relevanceTerms(job);
+  return job.results.map((lead) => ({ ...lead, relevance: relevanceOf(lead, terms) }));
 }
 
 /** Places shown in the list (not off-topic), per job, recomputed only when the job changed. */
@@ -255,7 +245,9 @@ router.get("/maps/:jobId", (req, res) => {
     res.status(404).json({ error: "Maps job not found" });
     return;
   }
-  res.json({ ...job, results: withRelevance(job) });
+  const results = withRelevance(job);
+  const shownIds = new Set(results.filter((lead) => lead.relevance !== "offTopic").map((lead) => lead.id));
+  res.json({ ...job, results, termYield: termYield(job, (lead) => shownIds.has(lead.id)) });
 });
 
 router.post("/maps/:jobId/pause", (req, res) => {
@@ -345,6 +337,25 @@ router.post("/maps/:jobId/resume", (req, res) => {
     status: "running",
     message: "Job resumed.",
   });
+});
+
+/** Deletes a finished, paused or failed search and its places. A running search must be paused first. */
+router.delete("/maps/:jobId", async (req, res) => {
+  try {
+    const outcome = await deleteMapsJob(req.params.jobId);
+    if (outcome === "not-found") {
+      res.status(404).json({ error: "Maps job not found" });
+      return;
+    }
+    if (outcome === "running") {
+      res.status(409).json({ error: "This search is running: pause it before deleting it" });
+      return;
+    }
+    shownCounts.delete(req.params.jobId);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(503).json({ error: `Could not delete the search (database unreachable): ${err instanceof Error ? err.message : String(err)}` });
+  }
 });
 
 

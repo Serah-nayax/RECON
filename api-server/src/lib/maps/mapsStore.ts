@@ -82,6 +82,8 @@ export function takeInterruptedJobIds(): string[] {
 }
 
 async function persistJob(job: MapsJob): Promise<void> {
+  // A write queued before a delete must not bring the job back.
+  if (!store.has(job.jobId)) return;
   try {
     await db
       .insert(mapsJobs)
@@ -153,6 +155,7 @@ export async function initMapsStore(): Promise<void> {
       const completedCells = healedCells.filter(
         (c) => c.status === "done" || c.status === "failed",
       ).length;
+      const totalCells = healedCells.filter((c) => c.status !== "skipped").length;
 
       // A lead whose details were loading when the server stopped is marked partial. Results of
       // the former "Enrich" button (removed: qualifying is done in the Lead Qualifier) are dropped.
@@ -182,7 +185,9 @@ export async function initMapsStore(): Promise<void> {
         cells: healedCells,
         results: healedResults,
         status,
-        totalCells: row.totalCells,
+        // From the cells, like completedCells: older versions saved the first grid's size and
+        // missed the cells added later (split cells, Google categories), showing "48/20".
+        totalCells,
         completedCells,
         totalLeads: row.totalLeads,
         error,
@@ -193,13 +198,16 @@ export async function initMapsStore(): Promise<void> {
       store.set(row.jobId, job);
 
       // Persist the healed state back to DB if we changed anything
-      if (status !== row.status || completedCells !== row.completedCells || resultsChanged) {
+      if (status !== row.status || completedCells !== row.completedCells || totalCells !== row.totalCells || resultsChanged) {
         void persistJob(job);
       }
     }
     logger.info({ count: rows.length }, "Maps jobs loaded from database");
   } catch (err) {
-    logger.error({ err }, "Failed to load maps jobs from DB");
+    // Starting with no searches would look like lost data: the startup retries instead.
+    store.clear();
+    interruptedJobIds.length = 0;
+    throw err;
   }
 }
 
@@ -224,6 +232,29 @@ export function createMapsJob(config: MapsJobConfig, cells: GridCell[]): MapsJob
   return job;
 }
 
+/**
+ * Deletes a search that is not running (finished, paused or failed), from memory and the database.
+ * Returns "running" when it is still at work: pause it first.
+ */
+export async function deleteMapsJob(jobId: string): Promise<"deleted" | "not-found" | "running"> {
+  const job = store.get(jobId);
+  if (!job) return "not-found";
+  if (job.status === "running" || job.status === "pending") return "running";
+  store.delete(jobId);
+  clearTimeout(persistTimers.get(jobId));
+  persistTimers.delete(jobId);
+  persistFailures.delete(jobId);
+  await (persistChains.get(jobId) ?? Promise.resolve());
+  try {
+    await db.delete(mapsJobs).where(eq(mapsJobs.jobId, jobId));
+  } catch (err) {
+    // Not deleted in the database: keep it listed rather than have it come back at the next start.
+    store.set(jobId, job);
+    throw err;
+  }
+  return "deleted";
+}
+
 export function getMapsJob(jobId: string): MapsJob | undefined {
   return store.get(jobId);
 }
@@ -241,18 +272,62 @@ export function updateMapsJob(jobId: string, updates: Partial<MapsJob>): void {
   schedulePersist(jobId);
 }
 
-export function addMapsLeads(jobId: string, newLeads: MapsLead[]): string[] {
+export function addMapsLeads(
+  jobId: string,
+  newLeads: MapsLead[],
+  source?: { term: string; cellIndex: number },
+): string[] {
   const job = store.get(jobId);
   if (!job) return [];
 
   // Deduplicate by id — prefer mapsUrl-derived IDs; fall back to name+address
   const existingIds = new Set(job.results.map((r) => r.id));
-  const deduped = newLeads.filter((l) => l.id && !existingIds.has(l.id));
+  const deduped = newLeads
+    .filter((l) => l.id && !existingIds.has(l.id))
+    .map((l) => (source ? { ...l, foundBy: source.term, foundInCell: source.cellIndex } : l));
   job.results.push(...deduped);
   job.totalLeads = job.results.length;
   job.updatedAt = new Date().toISOString();
   schedulePersist(jobId);
   return deduped.map((lead) => lead.id);
+}
+
+export interface TermYield {
+  term: string;
+  /** Learned from Google's categories, not typed or translated. */
+  auto: boolean;
+  minutes: number;
+  /** Places this term's cells found first. */
+  places: number;
+  /** Of those, places the list shows (not hidden as unrelated). */
+  shown: number;
+}
+
+/**
+ * What each search term cost and brought. A term with many minutes and few shown places is
+ * not worth searching. Places found before Nov 2026 have no term: they are not counted.
+ */
+export function termYield(job: MapsJob, isShown: (lead: MapsLead) => boolean): TermYield[] {
+  const terms = new Map<string, TermYield>();
+  const entry = (term: string) => {
+    let t = terms.get(term);
+    if (!t) terms.set(term, (t = { term, auto: false, minutes: 0, places: 0, shown: 0 }));
+    return t;
+  };
+  for (const c of job.cells) {
+    const t = entry(c.searchTerm || job.config.searchTerm);
+    t.minutes += (c.durationMs ?? 0) / 60_000;
+    if (c.autoTerm) t.auto = true;
+  }
+  for (const lead of job.results) {
+    if (!lead.foundBy) continue;
+    const t = entry(lead.foundBy);
+    t.places++;
+    if (isShown(lead)) t.shown++;
+  }
+  return [...terms.values()]
+    .map((t) => ({ ...t, minutes: Math.round(t.minutes * 10) / 10 }))
+    .sort((a, b) => b.minutes - a.minutes);
 }
 
 export function updateCell(jobId: string, cellIndex: number, updates: Partial<GridCell>): void {

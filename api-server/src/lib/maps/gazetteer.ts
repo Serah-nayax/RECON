@@ -27,6 +27,8 @@ export interface GazetteerPlace {
   population: number;
   /** Normalized names to match, the main one first. */
   names: string[];
+  /** Local names of a region ("bayern"), as reliable as its main name. */
+  localNames?: string[];
 }
 
 export interface PlaceSuggestion {
@@ -54,6 +56,85 @@ export function coreName(name: string): string {
     .replace(/^(state|province|region|department|district|county|governorate|prefecture|city|municipality) of /, "")
     .replace(/ (state|province|region|district|county|governorate|prefecture|oblast|metropolitan|d c)$/, "");
 }
+
+/**
+ * Local and French names of regions. GeoNames gives regions their English name only
+ * ("Bavaria"): typing "Bayern" or "Bavière" found nothing. Keyed by country and GeoNames name.
+ */
+const REGION_NAMES: Record<string, string[]> = {
+  "DE|Bavaria": ["Bayern", "Bavière", "Freistaat Bayern"],
+  "DE|Baden-Wurttemberg": ["Baden-Württemberg", "Bade-Wurtemberg"],
+  "DE|North Rhine-Westphalia": ["Nordrhein-Westfalen", "NRW", "Rhénanie-du-Nord-Westphalie"],
+  "DE|Lower Saxony": ["Niedersachsen", "Basse-Saxe"],
+  "DE|Saxony": ["Sachsen", "Saxe"],
+  "DE|Saxony-Anhalt": ["Sachsen-Anhalt", "Saxe-Anhalt"],
+  "DE|Thuringia": ["Thüringen", "Thuringe"],
+  "DE|Hesse": ["Hessen"],
+  "DE|Rheinland-Pfalz": ["Rhineland-Palatinate", "Rhénanie-Palatinat"],
+  "DE|Mecklenburg-Vorpommern": ["Mecklenburg-Western Pomerania", "Mecklembourg-Poméranie-Occidentale"],
+  "AT|Tyrol": ["Tirol"],
+  "AT|Styria": ["Steiermark", "Styrie"],
+  "AT|Upper Austria": ["Oberösterreich", "Haute-Autriche"],
+  "AT|Lower Austria": ["Niederösterreich", "Basse-Autriche"],
+  "AT|Carinthia": ["Kärnten", "Carinthie"],
+  "IT|Sicily": ["Sicilia", "Sicile"],
+  "IT|Sardinia": ["Sardegna", "Sardaigne"],
+  "IT|Tuscany": ["Toscana", "Toscane"],
+  "IT|Lombardy": ["Lombardia", "Lombardie"],
+  "IT|Piedmont": ["Piemonte", "Piémont"],
+  "IT|Apulia": ["Puglia", "Pouilles"],
+  "IT|The Marches": ["Marche", "Marches"],
+  "IT|Basilicate": ["Basilicata"],
+  "IT|Aosta Valley": ["Valle d'Aosta", "Vallée d'Aoste"],
+  "IT|Trentino-Alto Adige": ["Trentino-Alto Adige/Südtirol", "Trentin-Haut-Adige"],
+  "IT|Liguria": ["Ligurie"],
+  "IT|Campania": ["Campanie"],
+  "IT|Calabria": ["Calabre"],
+  "IT|Veneto": ["Vénétie"],
+  "IT|Emilia-Romagna": ["Émilie-Romagne"],
+  "IT|Lazio": ["Latium"],
+  "IT|Umbria": ["Ombrie"],
+  "IT|Abruzzo": ["Abruzzes"],
+  "IT|Friuli Venezia Giulia": ["Frioul-Vénétie Julienne"],
+  "ES|Catalonia": ["Cataluña", "Catalunya", "Catalogne"],
+  "ES|Andalusia": ["Andalucía", "Andalousie"],
+  "ES|Balearic Islands": ["Islas Baleares", "Illes Balears", "Baléares"],
+  "ES|Canary Islands": ["Islas Canarias", "Canaries"],
+  "ES|Castille-La Mancha": ["Castilla-La Mancha", "Castille-La Manche"],
+  "ES|Castille and León": ["Castilla y León", "Castille-et-León"],
+  "ES|Basque Country": ["País Vasco", "Euskadi", "Pays basque"],
+  "ES|Navarre": ["Navarra"],
+  "ES|Aragon": ["Aragón"],
+  "ES|Valencia": ["Comunidad Valenciana", "Comunitat Valenciana", "Valence"],
+  "ES|Galicia": ["Galice"],
+  "ES|Asturias": ["Asturies"],
+  "CH|Geneva": ["Genève", "Genf"],
+  "CH|Zurich": ["Zürich"],
+  "CH|Bern": ["Berne"],
+  "CH|Lucerne": ["Luzern"],
+  "CH|Grisons": ["Graubünden"],
+  "CH|Valais": ["Wallis"],
+  "CH|Ticino": ["Tessin"],
+  "CH|Fribourg": ["Freiburg"],
+  "CH|Basel-City": ["Basel-Stadt", "Bâle-Ville"],
+  "CH|Basel-Landschaft": ["Bâle-Campagne"],
+  "BE|Flanders": ["Vlaanderen", "Flandre"],
+  "BE|Wallonia": ["Wallonie"],
+  "BE|Brussels Capital": ["Bruxelles", "Brussel", "Brussels"],
+  "NL|North Holland": ["Noord-Holland", "Hollande-Septentrionale"],
+  "NL|South Holland": ["Zuid-Holland", "Hollande-Méridionale"],
+  "NL|North Brabant": ["Noord-Brabant", "Brabant-Septentrional"],
+  "PL|Lesser Poland": ["Małopolska", "Małopolskie", "Petite-Pologne"],
+  "PL|Mazovia": ["Mazowsze", "Mazowieckie", "Mazovie"],
+  "PL|Lower Silesia": ["Dolny Śląsk", "Dolnośląskie", "Basse-Silésie"],
+  "PL|Silesia": ["Śląsk", "Śląskie", "Silésie"],
+  "PL|Greater Poland": ["Wielkopolska", "Wielkopolskie", "Grande-Pologne"],
+  "PL|Pomerania": ["Pomorze", "Pomorskie", "Poméranie"],
+  "CZ|Prague": ["Praha"],
+  "CZ|Central Bohemia": ["Středočeský kraj", "Bohême-Centrale"],
+  "PT|Lisbon": ["Lisboa", "Lisbonne"],
+  "PT|Azores": ["Açores"],
+};
 
 let places: GazetteerPlace[] | null = null;
 let byId = new Map<string, GazetteerPlace>();
@@ -95,6 +176,7 @@ function load(): GazetteerPlace[] {
       lng,
       population,
       names: [normalize(name), ...(alts ? alts.split("|") : [])],
+      localNames: kind === 1 ? REGION_NAMES[`${cc}|${name}`]?.map(normalize) : undefined,
     }));
     byId = new Map(places.map((p) => [p.id, p]));
     logger.info({ areas: places.length, ms: Date.now() - started }, "Area list loaded");
@@ -131,6 +213,20 @@ function typeLabel(p: GazetteerPlace): string {
   return (KIND_WORDS[p.countryCode] ?? ["region", "district"])[p.kind - 1];
 }
 
+/**
+ * Countries whose outline includes far-away overseas parts: their mainland is offered first.
+ * "France" alone covers French Polynesia, New Caledonia, Réunion, Kerguelen…: 228 of its 333
+ * grid cells are overseas, against 103 cells for metropolitan France (OpenStreetMap relation 1403916).
+ */
+const MAINLAND: Record<string, { osmId: string; label: string; context: string; overseas: string }> = {
+  fr: {
+    osmId: "R1403916",
+    label: "France (mainland)",
+    context: "Mainland and Corsica, no overseas territories",
+    overseas: "With overseas territories (Réunion, Antilles, Guiana, Polynesia, New Caledonia…)",
+  },
+};
+
 /** How big the area is, for ranking: a town counts fully, a region a part of its towns ("par" → Paris before Paraná). */
 const WEIGHT = [0.2, 0.15, 0.1, 1];
 
@@ -149,6 +245,12 @@ export function suggestPlaces(query: string, limit = 8): PlaceSuggestion[] {
   for (const p of load()) {
     const main = p.names[0];
     let bonus = main === q ? 1.5 : main.startsWith(q) ? 0.5 : q.length >= 3 && main.includes(wordStart) ? 0 : -9;
+    // A region's local name counts like its main name ("lombardia": Lombardy, not only the
+    // Mexican town Lombardía).
+    for (const local of p.localNames ?? []) {
+      if (local === q) bonus = Math.max(bonus, 1.5);
+      else if (local.startsWith(q)) bonus = Math.max(bonus, 0.5);
+    }
     let other = false;
     if (bonus === 1.5) mainExact = true;
     else if (bonus < 0 && q.length >= 4) {
@@ -197,7 +299,14 @@ export function suggestPlaces(query: string, limit = 8): PlaceSuggestion[] {
   }
   top.sort((a, b) => b.score - a.score);
 
-  return top.slice(0, limit).map(({ p }) => {
+  // "france": the country's own regions and towns before foreign namesakes (Franceville, Fort Frances).
+  const countryTyped = top.find((s) => s.p.kind === 0 && s.p.names[0] === q)?.p.countryCode;
+  if (countryTyped) {
+    const own = top.filter((s) => s.p.countryCode === countryTyped);
+    top.splice(0, top.length, ...own, ...top.filter((s) => s.p.countryCode !== countryTyped));
+  }
+
+  const suggestions = top.slice(0, limit).map(({ p }) => {
     const type = typeLabel(p);
     const regionDiffers = p.region && coreName(p.region) !== p.names[0];
     const shownName = clash.has(p) && coreName(p.name) === p.names[0] ? `${p.name} (${type})` : p.name;
@@ -213,4 +322,20 @@ export function suggestPlaces(query: string, limit = 8): PlaceSuggestion[] {
       countryCode: p.countryCode,
     };
   });
+
+  // A country with overseas parts: its mainland right before it, the whole country labelled as such.
+  for (let i = 0; i < suggestions.length; i++) {
+    const s = suggestions[i];
+    const mainland = s.type === "country" ? MAINLAND[s.countryCode] : undefined;
+    if (!mainland) continue;
+    suggestions[i] = { ...s, context: mainland.overseas, label: `${s.name} (with overseas territories)` };
+    suggestions.splice(i, 0, {
+      ...s,
+      osmId: mainland.osmId,
+      context: mainland.context,
+      label: mainland.label,
+    });
+    i++;
+  }
+  return suggestions.slice(0, limit);
 }

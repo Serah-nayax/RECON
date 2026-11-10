@@ -24,8 +24,10 @@ import {
   isJobPausedOrDone,
   takeInterruptedJobIds,
   jobSearchTerms,
+  termYield,
   type MapsJobConfig,
 } from "./mapsStore.js";
+import { relevanceOf, relevanceTerms } from "./relevance.js";
 import type { BoundingBox, GridCell } from "./geoGrid.js";
 import { zoomForCell } from "./geoGrid.js";
 import { resolveArea, isInArea, rectTouchesArea, type ResolvedArea } from "./areas.js";
@@ -46,7 +48,7 @@ import {
 } from "./googleMapsCrawler.js";
 import { logger } from "../logger.js";
 import { allowSleep, keepAwake } from "./keepAwake.js";
-import { isOffTopicPlace, learnExpansions, TOP_RESULTS } from "./searchProfile.js";
+import { isOffTopicPlace, isSearchableExpansion, learnExpansions, TOP_RESULTS } from "./searchProfile.js";
 
 const NETWORK_POLL_MS = 10_000;
 /**
@@ -338,7 +340,8 @@ function previousExpansions(jobId: string, term: string): string[] {
     })
     .filter((x) => x.single && x.extra.length > 0)
     .sort((a, b) => String(b.job.createdAt).localeCompare(String(a.job.createdAt)));
-  return previous[0]?.extra ?? [];
+  // Filtered again: an older job may have learned a term now excluded ("playground").
+  return (previous[0]?.extra ?? []).filter((e) => isSearchableExpansion(term, e));
 }
 
 /** Adds one cell per grid square for each expansion term, within the cell limit. */
@@ -396,12 +399,17 @@ const PAGE_CUT_MAX_PLACES = 22;
 const DEFER_SPLITS = process.env.MAPS_DEFER_SPLITS !== "0";
 /** Under limited view a city-sized cell is cut only once: four times the requests at most for those cells. */
 const LIMITED_MAX_SPLIT_DEPTH = 1;
+const SPLIT_EMPTY_QUARTERS = process.env.MAPS_SPLIT_EMPTY_QUARTERS === "1";
 
 /** City-level splits already done (jobs from before cityDepth: their depth). */
 const cityDepthOf = (cell: GridCell) => cell.cityDepth ?? cell.depth ?? 0;
 
 /** Should this finished cell be searched again in four quarters? */
-function cellNeedsSplit(cell: GridCell, rawPlaces: number, places: number, limitedView: boolean): boolean {
+function cellNeedsSplit(cell: GridCell, rawPlaces: number, places: number, limitedView: boolean, newPlaces: number): boolean {
+  // A quarter that found nothing new lists what its parent already listed: its own quarters
+  // almost never do better (63 jobs, Nov 2026: 23% of the search time for 1.5% of the places,
+  // most of them public playgrounds now hidden). MAPS_SPLIT_EMPTY_QUARTERS=1 cuts them anyway.
+  if ((cell.depth ?? 0) >= 1 && newPlaces === 0 && !SPLIT_EMPTY_QUARTERS) return false;
   // A full list (100+) means Google cut it: the cell may hide more wherever those places are,
   // unless the map Google showed was nearly empty (Northumberland: 145 listed, none in view,
   // filled from farther away). Paris: counting the view only here dropped 10 of 12 such cuts,
@@ -483,6 +491,8 @@ function splitSaturatedCell(
       rawPlaces: undefined,
       viewPlaces: undefined,
       newLeads: undefined,
+      matchPlaces: undefined,
+      newMatches: undefined,
       durationMs: undefined,
       phasesMs: undefined,
       limitedView: undefined,
@@ -754,6 +764,7 @@ async function runMapsJob(jobId: string): Promise<void> {
           });
 
         const cellStartedAt = Date.now();
+        const foundBy = { term: cell.searchTerm || config.searchTerm, cellIndex: i };
         let newInCell = 0;
         let leads: MapsLead[];
         try {
@@ -766,7 +777,7 @@ async function runMapsJob(jobId: string): Promise<void> {
             page,
             signal,
             (partialLeads) => {
-              const partialIds = addMapsLeads(jobId, withoutHiddenFields(filterInBounds(partialLeads, true)));
+              const partialIds = addMapsLeads(jobId, withoutHiddenFields(filterInBounds(partialLeads, true)), foundBy);
               for (const id of partialIds) discoveredIds.add(id);
               // Not a reason to stop scrolling early: a cell's new places come at the end of
               // Google's list (Paris arcade: positions 70-100, after 40+ known places).
@@ -794,7 +805,7 @@ async function runMapsJob(jobId: string): Promise<void> {
         const limitedView = isLimitedView(page);
         const viewPlaces = placesInView(cells[i], page.viewportSize(), leads);
         const inBounds = withoutHiddenFields(filterInBounds(leads));
-        const insertedIds = addMapsLeads(jobId, inBounds);
+        const insertedIds = addMapsLeads(jobId, inBounds, foundBy);
         for (const id of insertedIds) discoveredIds.add(id);
         // Leads first stored from the scrolling feed (before Google's search data was
         // parsed) get their phone/website/address now.
@@ -817,7 +828,14 @@ async function runMapsJob(jobId: string): Promise<void> {
           session?.retire();
           throw new Error("Google listed only its first page of places; retrying with a fresh session");
         }
-        updateCell(jobId, i, { status: "done", leadsFound: inBounds.length, rawPlaces: leads.length, viewPlaces, pageCutRetried: cellData.pageCutRetried || undefined, newLeads: newInCell + insertedIds.length, limitedView, durationMs: Date.now() - cellStartedAt, phasesMs: lastPhaseTimings(page) ?? undefined });
+        // On-topic places in this cell's list, and among the ones it found first: tells whether
+        // cutting a full cell finds venues or only more of what Google pads lists with.
+        const jobNow = getMapsJob(jobId);
+        const terms = jobNow ? relevanceTerms(jobNow) : null;
+        const isMatch = (lead: MapsLead) => !!terms && relevanceOf(lead, terms) === "match";
+        const matchPlaces = inBounds.filter(isMatch).length;
+        const newMatches = (jobNow?.results ?? []).filter((l) => discoveredIds.has(l.id) && isMatch(l)).length;
+        updateCell(jobId, i, { status: "done", leadsFound: inBounds.length, rawPlaces: leads.length, viewPlaces, matchPlaces, newMatches, pageCutRetried: cellData.pageCutRetried || undefined, newLeads: newInCell + insertedIds.length, limitedView, durationMs: Date.now() - cellStartedAt, phasesMs: lastPhaseTimings(page) ?? undefined });
         logger.info(
           {
             jobId,
@@ -844,7 +862,7 @@ async function runMapsJob(jobId: string): Promise<void> {
         // holds fewer places than the list, Google fills the list from farther away (Northumberland
         // arcade: 1.5 km views listing the same 145 places, none in view; 57 cells, 1 new
         // place), so the raw count no longer says the cell hides more.
-        if (cellNeedsSplit(cells[i], leads.length, viewPlaces, limitedView)) {
+        if (cellNeedsSplit(cells[i], leads.length, viewPlaces, limitedView, newInCell + insertedIds.length)) {
           if (DEFER_SPLITS && !refining) {
             // Its places are already stored; the quarters run after the quick pass.
             updateCell(jobId, i, { splitDeferred: true });
@@ -1041,5 +1059,10 @@ async function runMapsJob(jobId: string): Promise<void> {
   updateMapsJob(jobId, { status: allDone ? "done" : "paused" });
   const failedCells = finalJob.cells.filter((c) => c.status === "failed").length;
   if (failedCells) logger.warn({ jobId, failedCells }, "Maps job finished with cells Google refused");
-  logger.info({ jobId, totalLeads: finalJob.totalLeads }, "Maps job complete");
+  logger.info({ jobId, totalLeads: finalJob.totalLeads, byTerm: yieldByTerm(finalJob) }, "Maps job complete");
+}
+
+/** Minutes of search and places found first, per term (the API adds how many are shown). */
+function yieldByTerm(job: NonNullable<ReturnType<typeof getMapsJob>>) {
+  return termYield(job, () => false).map(({ shown: _shown, ...t }) => t);
 }

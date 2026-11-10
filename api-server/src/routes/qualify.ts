@@ -6,6 +6,7 @@ import { getIcp } from "../lib/icpStore.js";
 import { logger } from "../lib/logger.js";
 import type { LeadInput } from "../lib/qualify/qualifyStore.js";
 import { canonicalizeLeadUrl } from "../lib/qualify/leadIdentity.js";
+import { summarizeByMonth, summarizeUsage } from "../lib/qualify/aiUsage.js";
 
 const router: IRouter = Router();
 // Leads are processed one by one and stored in the DB, so the cap only guards request size (body limit is 10mb).
@@ -86,8 +87,17 @@ router.get("/qualify", (_req, res) => {
     completedCount: b.completedCount,
     createdAt: b.createdAt,
     updatedAt: b.updatedAt,
+    usage: summarizeUsage(b.leads),
   }));
   res.json({ batches });
+});
+
+// AI consumption per month across all batches. Declared before /qualify/:batchId, which would match it.
+router.get("/qualify/usage", (_req, res) => {
+  const leads = listBatches().flatMap((b) =>
+    b.leads.map((l) => ({ aiUsage: l.aiUsage, completedAt: l.completedAt ?? b.createdAt })),
+  );
+  res.json({ months: summarizeByMonth(leads) });
 });
 
 router.get("/qualify/:batchId", (req, res) => {
@@ -96,7 +106,7 @@ router.get("/qualify/:batchId", (req, res) => {
     res.status(404).json({ error: "Batch not found" });
     return;
   }
-  res.json(batch);
+  res.json({ ...batch, usage: summarizeUsage(batch.leads) });
 });
 
 router.post("/qualify/:batchId/stop", (req, res) => {
@@ -112,6 +122,11 @@ router.post("/qualify/:batchId/retry", (req, res) => {
   const source = getBatch(req.params.batchId);
   if (!source) {
     res.status(404).json({ error: "Batch not found" });
+    return;
+  }
+  // Retrying a batch still at work would score (and pay for) its remaining leads twice.
+  if (source.status === "pending" || source.status === "running") {
+    res.status(409).json({ error: "This batch is still running: stop it or wait for it to finish before retrying" });
     return;
   }
 

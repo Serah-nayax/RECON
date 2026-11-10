@@ -22,7 +22,7 @@ import { Progress } from "@/components/ui/progress";
 import {
   Map, Play, Pause, ExternalLink,
   Star, MessageSquare, Phone, MapPin, Tag, Clock, Link, Target,
-  ChevronRight, Loader2, AlertTriangle, CheckCircle2, Download,
+  ChevronRight, Loader2, AlertTriangle, CheckCircle2, Download, Trash2,
 } from "lucide-react";
 
 const ALL_FIELDS: MapsField[] = [
@@ -73,27 +73,67 @@ function StatusBadge({ status }: { status: MapsJob["status"] }) {
   );
 }
 
-function exportToCsv(job: MapsJob, leads: MapsLead[]) {
+/** Columns of an export: the name, the fields picked for the search, and the match group. */
+function exportTable(job: MapsJob, leads: MapsLead[]): { headers: string[]; rows: (string | number)[][] } {
   const fields = job.config.selectedFields;
-  const headers = ["name", ...fields].join(",");
-  const rows = leads.map((lead) => {
-    const cols = [
-      JSON.stringify(lead.name ?? ""),
-      ...fields.map((f) => {
-        const v = lead[f as keyof MapsLead];
-        return JSON.stringify(v !== undefined && v !== null ? String(v) : "");
-      }),
-    ];
-    return cols.join(",");
-  });
-  const csv = [headers, ...rows].join("\n");
-  const blob = new Blob([csv], { type: "text/csv" });
+  const headers = ["Name", ...fields.map((f) => FIELD_LABELS[f] ?? f), "Match"];
+  const rows = leads.map((lead) => [
+    lead.name ?? "",
+    ...fields.map((f) => {
+      const v = lead[f as keyof MapsLead];
+      if (v === undefined || v === null) return "";
+      return typeof v === "number" ? v : String(v);
+    }),
+    lead.relevance === "match" ? "match" : "probable",
+  ]);
+  return { headers, rows };
+}
+
+/** "arcade-Lyon-2026-11-10": no characters Windows refuses in a file name. */
+function exportFileName(job: MapsJob, ext: string): string {
+  const base = `${job.config.searchTerm}-${job.config.location || job.config.scope}-${new Date().toISOString().slice(0, 10)}`;
+  return `${base.replace(/[\\/:*?"<>|,]+/g, "").replace(/\s+/g, "-")}.${ext}`;
+}
+
+function downloadBlob(blob: Blob, fileName: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${job.config.searchTerm.replace(/\s+/g, "-")}-${job.config.location || job.config.scope}-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = fileName;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+/** Excel file: opens with the right columns and accents whatever the Windows language. */
+async function exportToXlsx(job: MapsJob, leads: MapsLead[]) {
+  const { default: ExcelJS } = await import("exceljs");
+  const { headers, rows } = exportTable(job, leads);
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet("Places");
+  ws.addRow(headers).font = { bold: true };
+  for (const row of rows) ws.addRow(row);
+  ws.views = [{ state: "frozen", ySplit: 1 }];
+  ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: headers.length } };
+  headers.forEach((h, i) => {
+    const longest = Math.max(h.length, ...rows.map((r) => String(r[i] ?? "").length));
+    ws.getColumn(i + 1).width = Math.min(60, Math.max(10, longest + 2));
+  });
+  const buffer = await wb.xlsx.writeBuffer();
+  downloadBlob(
+    new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+    exportFileName(job, "xlsx"),
+  );
+}
+
+/**
+ * Standard CSV (for CRM imports): fields quoted with "" escapes, and a UTF-8 mark so that
+ * Excel reads the accents. JSON.stringify gave \" escapes, which broke the columns.
+ */
+function exportToCsv(job: MapsJob, leads: MapsLead[]) {
+  const { headers, rows } = exportTable(job, leads);
+  const quote = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
+  const csv = [headers, ...rows].map((r) => r.map(quote).join(",")).join("\r\n");
+  downloadBlob(new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" }), exportFileName(job, "csv"));
 }
 
 function renderCell(field: MapsField, lead: MapsLead) {
@@ -180,21 +220,6 @@ function extractIcpSearchTerms(icp: IcpConfig): string[] {
   return terms.slice(0, 7);
 }
 
-type Relevance = NonNullable<MapsLead["relevance"]>;
-
-const RELEVANCE_GROUPS: { key: Relevance; title: string; hint: string }[] = [
-  {
-    key: "match",
-    title: "Match your search",
-    hint: "Their Google category or name says what you searched.",
-  },
-  {
-    key: "other",
-    title: "Probable",
-    hint: "Found by the search under another category (an escape room, a bar with games...): worth a look.",
-  },
-];
-
 /** The best-known places (most reviews) first. */
 function byReviews(a: MapsLead, b: MapsLead): number {
   return (b.reviewCount ?? -1) - (a.reviewCount ?? -1);
@@ -212,11 +237,8 @@ function LeadsTable({
   qualifyingId: string | null;
 }) {
   const cols = selectedFields;
-  const totalCols = cols.length + 2;
-  const groups = RELEVANCE_GROUPS.map((group) => ({
-    ...group,
-    leads: leads.filter((lead) => (lead.relevance ?? "other") === group.key).sort(byReviews),
-  })).filter((group) => group.leads.length > 0);
+  // One list: every shown place goes to the qualifier anyway, which does the real sorting.
+  const sortedLeads = [...leads].sort(byReviews);
 
   return (
     <table className="w-full text-xs">
@@ -235,20 +257,7 @@ function LeadsTable({
         </tr>
       </thead>
       <tbody>
-        {groups.map((group) => {
-          return (
-            <React.Fragment key={group.key}>
-              <tr className="border-b border-muted/20 bg-muted/5">
-                <td colSpan={totalCols} className="py-1.5 px-3">
-                  <div className="flex items-center gap-2 text-[11px] font-mono" title={group.hint}>
-                    <span className={`font-semibold ${group.key === "match" ? "text-emerald-400" : "text-foreground/80"}`}>
-                      {group.title} ({group.leads.length})
-                    </span>
-                    <span className="text-muted-foreground/60 truncate">{group.hint}</span>
-                  </div>
-                </td>
-              </tr>
-              {group.leads.map((lead, leadIndex) => (
+              {sortedLeads.map((lead, leadIndex) => (
                 <tr
                   key={`${lead.id || lead.name}-${leadIndex}`}
                   className="border-b border-muted/15 transition-colors hover:bg-muted/5"
@@ -301,9 +310,6 @@ function LeadsTable({
                   </td>
                 </tr>
               ))}
-            </React.Fragment>
-          );
-        })}
       </tbody>
     </table>
   );
@@ -332,6 +338,17 @@ function JobProgress({ jobId, onBack }: { jobId: string; onBack: () => void }) {
   const resumeMut = useMutation({
     mutationFn: () => mapsApi.resume(jobId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["maps-job", jobId] }),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: () => mapsApi.remove(jobId),
+    onSuccess: () => {
+      queryClient.removeQueries({ queryKey: ["maps-job", jobId] });
+      void queryClient.invalidateQueries({ queryKey: ["maps-jobs"] });
+      toast({ title: "Search deleted" });
+      onBack();
+    },
+    onError: (err: Error) => toast({ title: "Delete failed", description: err.message, variant: "destructive" }),
   });
 
   const [, setLocation] = useLocation();
@@ -470,14 +487,24 @@ function JobProgress({ jobId, onBack }: { jobId: string; onBack: () => void }) {
         </div>
         <div className="flex gap-2 shrink-0">
           {shownLeads.length > 0 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-muted-foreground hover:text-foreground"
-              onClick={() => exportToCsv(job, shownLeads)}
-            >
-              <Download className="h-3.5 w-3.5 mr-1.5" /> CSV
-            </Button>
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground hover:text-foreground"
+                onClick={() => void exportToXlsx(job, shownLeads)}
+              >
+                <Download className="h-3.5 w-3.5 mr-1.5" /> Excel
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground hover:text-foreground"
+                onClick={() => exportToCsv(job, shownLeads)}
+              >
+                <Download className="h-3.5 w-3.5 mr-1.5" /> CSV
+              </Button>
+            </>
           )}
           {job.status === "running" && (
             <Button variant="outline" size="sm" onClick={() => pauseMut.mutate()} disabled={pauseMut.isPending}>
@@ -487,6 +514,21 @@ function JobProgress({ jobId, onBack }: { jobId: string; onBack: () => void }) {
           {job.status === "paused" && (
             <Button variant="outline" size="sm" onClick={() => resumeMut.mutate()} disabled={resumeMut.isPending}>
               <Play className="h-3.5 w-3.5 mr-1.5" /> Resume
+            </Button>
+          )}
+          {job.status !== "running" && job.status !== "pending" && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground hover:text-rose-400"
+              disabled={deleteMut.isPending}
+              onClick={() => {
+                if (window.confirm(`Delete this search and its ${job.totalLeads} places for the whole team? This cannot be undone.`)) {
+                  deleteMut.mutate();
+                }
+              }}
+            >
+              <Trash2 className="h-3.5 w-3.5 mr-1.5" /> Delete
             </Button>
           )}
         </div>
@@ -549,7 +591,6 @@ function JobProgress({ jobId, onBack }: { jobId: string; onBack: () => void }) {
       {/* Results table */}
       {shownLeads.length > 0 && (() => {
         const withoutWebsite = shownLeads.filter((l) => !l.website).length;
-        const matchCount = shownLeads.filter((l) => l.relevance === "match").length;
 
         return (
           <div className="space-y-3">
@@ -565,7 +606,7 @@ function JobProgress({ jobId, onBack }: { jobId: string; onBack: () => void }) {
                   onClick={() => qualifyAllMut.mutate()}
                   disabled={qualifyAllMut.isPending}
                   title={[
-                    `Send all ${shownLeads.length} places to the Lead Qualifier (next step), the ${matchCount} matching your search first.`,
+                    `Send all ${shownLeads.length} places to the Lead Qualifier (next step).`,
                     withoutWebsite > 0
                       ? `${withoutWebsite} have no website on Google Maps: they are scored from their name, category and Google Maps data.`
                       : "",
@@ -667,22 +708,21 @@ export function MapsSearch() {
     staleTime: 60_000,
   });
 
-  // Auto-populate search terms from the active ICP on first load.
-  // Only fires once (guarded by ref so manual edits are never overwritten).
-  const icpInitialized = useRef(false);
-  useEffect(() => {
-    if (icpInitialized.current || !activeIcp || searchTerms.length > 0) return;
-    const terms = extractIcpSearchTerms(activeIcp);
-    if (terms.length > 0) {
-      setSearchTerms(terms);
-      icpInitialized.current = true;
-    }
-  }, [activeIcp]);
+  // The ICP's terms are offered, not pre-selected: each term searched adds a full pass over the
+  // area (Jerusalem, 7 terms: 17 searches with translations and Google categories), so the team
+  // picks the ones it needs.
 
   const pendingAreas: AreaInput[] =
     areaInput.trim() && !areas.some((a) => areaKey(a) === areaInput.trim().toLowerCase())
       ? [...areas, { label: areaInput.trim() }]
       : areas;
+
+  // The map shows one grid (the last area, or the drawn rectangle): its cell selection only
+  // applies when that grid is the whole search.
+  const gridCount = pendingAreas.length + (drawnBbox ? 1 : 0);
+  const partialSelection =
+    selectedCellIndices.size > 0 && selectedCellIndices.size < previewCells.length;
+  const cellSelectionIgnored = partialSelection && gridCount > 1;
 
   const searchMut = useMutation({
     mutationFn: () =>
@@ -693,9 +733,7 @@ export function MapsSearch() {
         ...(drawnBbox ? { bbox: drawnBbox } : {}),
         selectedFields: Array.from(selectedFields),
         selectedCellIndices:
-          selectedCellIndices.size > 0 && selectedCellIndices.size < previewCells.length
-            ? Array.from(selectedCellIndices)
-            : undefined,
+          partialSelection && gridCount === 1 ? Array.from(selectedCellIndices) : undefined,
         label: label.trim() || undefined,
       }),
     onSuccess: (data) => {
@@ -924,7 +962,7 @@ export function MapsSearch() {
             <Target className="h-3.5 w-3.5 text-primary shrink-0" />
             <span className="text-muted-foreground">ICP:</span>
             <span className="text-primary font-semibold truncate">{activeIcp.name}</span>
-            <span className="text-muted-foreground/40 ml-auto shrink-0 hidden sm:inline">Search terms &amp; scoring pre-loaded from ICP</span>
+            <span className="text-muted-foreground/40 ml-auto shrink-0 hidden sm:inline">Pick search terms below · scoring uses this ICP</span>
           </div>
         )}
       </div>
@@ -1051,6 +1089,12 @@ export function MapsSearch() {
         loading={previewLoading}
         placeholder="Type an area above — or click Draw Area to select on the map"
       />
+      {cellSelectionIgnored && (
+        <p className="text-xs font-mono text-amber-400 -mt-3">
+          Several areas are searched: every cell of each area will be searched. To search only
+          some cells, search one area at a time.
+        </p>
+      )}
 
       {/* ── Step 3: Search term + Fields + Launch ────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_290px] gap-6">
@@ -1108,7 +1152,8 @@ export function MapsSearch() {
                     <button
                       key={term}
                       type="button"
-                      onClick={() => addTerm(term)}
+                      onClick={() => (searchTerms.includes(term) ? removeTerm(term) : addTerm(term))}
+                      title={searchTerms.includes(term) ? "Click to remove" : "Click to search this term too"}
                       className={`px-2 py-0.5 rounded text-[10px] font-mono border transition-colors ${
                         searchTerms.includes(term)
                           ? "bg-primary/15 border-primary/40 text-primary"
