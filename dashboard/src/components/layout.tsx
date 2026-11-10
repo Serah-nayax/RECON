@@ -3,10 +3,13 @@ import { Activity, Target, Settings, AlertTriangle, History, Map } from "lucide-
 import { useEffect, useState } from "react";
 import { HelpModal } from "@/components/help-modal";
 import { getCrawlerApiKey } from "@/lib/crawlerAuth";
+import { useServerInfo } from "@/lib/serverInfo";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const [hasApiKey, setHasApiKey] = useState(true);
+  // Only a shared server needs a key: locally the banner was shown for nothing.
+  const needsKey = useServerInfo().data?.local === false;
 
   useEffect(() => {
     const checkKey = () => {
@@ -63,11 +66,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      {!hasApiKey && location !== "/settings" && (
+      {needsKey && !hasApiKey && location !== "/settings" && (
         <div className="bg-destructive/10 border-b border-destructive/20 text-destructive text-sm font-medium px-4 py-3 flex justify-center items-center gap-2">
           <AlertTriangle className="w-4 h-4" />
-          <span>API Key not configured. Recon requires a valid API key to operate.</span>
-          <Link href="/settings" className="underline underline-offset-4 ml-2">Configure now</Link>
+          <span>Enter the access key of this RECON server to use it.</span>
+          <Link href="/settings" className="underline underline-offset-4 ml-2">Settings</Link>
         </div>
       )}
 

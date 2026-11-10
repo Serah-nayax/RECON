@@ -1,20 +1,24 @@
 {
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
-    "lib": ["es2022", "dom"],
+    "lib": [
+      "es2022",
+      "dom"
+    ],
     "incremental": true,
     "tsBuildInfoFile": ".tsbuildinfo",
     "outDir": "dist",
     "rootDir": "src",
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
-  "include": ["src"],
+  "include": [
+    "src"
+  ],
   "references": [
     {
       "path": "../lib/db"
-    },
-    {
-      "path": "../lib/integrations-gemini-ai"
     }
   ]
 }

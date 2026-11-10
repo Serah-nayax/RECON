@@ -8,7 +8,7 @@ dashboard (React, Vite)  ──/api──▶  api-server (Express 5)  ──▶ 
                                        ├─ Playwright ──▶ Google Maps
                                        ├─ website crawler ──▶ lead websites
                                        ├─ OpenStreetMap ──▶ area outlines
-                                       └─ Claude / Gemini ──▶ lead scoring
+                                       └─ Claude ──▶ lead scoring
 ```
 
 The API also serves the built dashboard, so RECON runs as a single process.

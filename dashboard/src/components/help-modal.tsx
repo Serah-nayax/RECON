@@ -91,7 +91,7 @@ const pages = [
     label: "Settings",
     color: "text-zinc-400",
     bg: "bg-zinc-400/10",
-    description: "The access key for a shared RECON server, and your HubSpot / Salesforce accounts.",
+    description: "Access to a shared RECON server, AI status, and your HubSpot / Salesforce account.",
   },
 ];
 

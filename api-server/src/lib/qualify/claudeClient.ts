@@ -1,8 +1,8 @@
 import Anthropic, { type ClientOptions } from "@anthropic-ai/sdk";
 import { Agent as UndiciAgent } from "undici";
 
-// Claude is opt-in, like Gemini: RECON_ENABLE_CLAUDE=1 plus ANTHROPIC_API_KEY.
-// Without both, qualification falls back to Gemini or to the free scorers.
+// Claude is opt-in: RECON_ENABLE_CLAUDE=1 plus ANTHROPIC_API_KEY.
+// Without both, leads are scored by the free local scorers.
 export function isClaudeConfigured(): boolean {
   return process.env.RECON_ENABLE_CLAUDE === "1" && Boolean(process.env.ANTHROPIC_API_KEY);
 }

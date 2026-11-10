@@ -4,9 +4,7 @@ import { aiUsageOfError, qualifyLead } from "./qualifyLead.js";
 import { logger } from "../logger.js";
 import { isClaudeConfigured } from "./claudeClient.js";
 
-// Leads run in parallel even with Gemini: crawling is plain HTTP, and the free-tier quota is
-// enforced per AI call (geminiLimiter.ts). Before, one lead at a time meant every crawl also
-// waited for the previous lead's AI call. Without AI, 16 leads at once (~48 page fetches beside
+// Leads run in parallel. Without AI, 16 leads at once (~48 page fetches beside
 // the local scoring model) left half the sites of a 44-lead batch unread on timeouts. With Claude
 // the scoring runs off this machine and the key allows far more requests (45,000 a minute), so
 // 16 leads run at once: a 500-place search qualifies in about half the time, at the same cost.

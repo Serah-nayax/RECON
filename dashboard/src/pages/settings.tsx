@@ -4,17 +4,9 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import {
-  Key,
-  Sparkles,
-  Trash2,
-  Eye,
-  EyeOff,
-  CheckCircle2,
-  Save,
-  ChevronDown,
-  ChevronRight,
-} from "lucide-react";
+import { Settings as SettingsIcon, Sparkles, Trash2, Eye, EyeOff, CheckCircle2, Save, KeyRound, Building2 } from "lucide-react";
+import { getCrawlerApiKey } from "@/lib/crawlerAuth";
+import { useServerInfo } from "@/lib/serverInfo";
 
 interface ConfigEntry {
   key: string;
@@ -23,185 +15,115 @@ interface ConfigEntry {
   updatedAt: string;
 }
 
-interface KeySection {
-  category: string;
-  title: string;
-  description: string;
-  keys: {
-    key: string;
-    label: string;
-    placeholder: string;
-    required?: boolean;
-  }[];
+interface KeyDef {
+  key: string;
+  label: string;
+  placeholder: string;
 }
 
-const PREDEFINED_SECTIONS: KeySection[] = [
-  {
-    category: "platform",
-    title: "Platform",
-    description: "Core authentication for the Recon backend.",
-    keys: [
-      {
-        key: "crawler_api_key",
-        label: "Crawler API Key",
-        placeholder: "Enter your Recon crawler API key",
-        required: true,
-      },
-    ],
-  },
-  {
-    category: "crm",
-    title: "CRM Integrations",
-    description: "Credentials for pushing qualified leads to your CRM.",
-    keys: [
-      { key: "HUBSPOT_ACCESS_TOKEN", label: "HubSpot Access Token", placeholder: "pat-na1-..." },
-      { key: "SALESFORCE_CLIENT_ID", label: "Salesforce Client ID", placeholder: "3MVG9..." },
-      { key: "SALESFORCE_CLIENT_SECRET", label: "Salesforce Client Secret", placeholder: "..." },
-      { key: "SALESFORCE_USERNAME", label: "Salesforce Username", placeholder: "user@example.com" },
-      { key: "SALESFORCE_PASSWORD", label: "Salesforce Password", placeholder: "••••••••" },
-      { key: "SALESFORCE_SECURITY_TOKEN", label: "Salesforce Security Token (optional)", placeholder: "..." },
-    ],
-  },
+const CRM_KEYS: KeyDef[] = [
+  { key: "HUBSPOT_ACCESS_TOKEN", label: "HubSpot Access Token", placeholder: "pat-na1-..." },
+  { key: "SALESFORCE_CLIENT_ID", label: "Salesforce Client ID", placeholder: "3MVG9..." },
+  { key: "SALESFORCE_CLIENT_SECRET", label: "Salesforce Client Secret", placeholder: "..." },
+  { key: "SALESFORCE_USERNAME", label: "Salesforce Username", placeholder: "user@example.com" },
+  { key: "SALESFORCE_PASSWORD", label: "Salesforce Password", placeholder: "••••••••" },
+  { key: "SALESFORCE_SECURITY_TOKEN", label: "Salesforce Security Token (optional)", placeholder: "..." },
 ];
 
-function maskKey(value: string): string {
-  if (value.length <= 8) return "••••••••";
-  return `${value.slice(0, 4)}${"•".repeat(Math.min(value.length - 8, 20))}${value.slice(-4)}`;
-}
-
-function getApiBase(): string {
-  const base = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
-  return `${base}/api`;
-}
-
-function getStoredApiKey(): string {
-  return localStorage.getItem("crawler_api_key") ?? "";
-}
+const ACCESS_KEY: KeyDef = { key: "crawler_api_key", label: "Access key", placeholder: "Key given by the RECON admin" };
 
 async function apiFetch(path: string, options: RequestInit = {}): Promise<Response> {
   const headers = new Headers(options.headers);
-  headers.set("x-api-key", getStoredApiKey());
-  if (options.body && !headers.has("Content-Type")) {
-    headers.set("Content-Type", "application/json");
-  }
-  const res = await fetch(`${getApiBase()}${path}`, { ...options, headers });
+  headers.set("x-api-key", getCrawlerApiKey());
+  if (options.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  const base = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+  const res = await fetch(`${base}/api${path}`, { ...options, headers });
   if (!res.ok) {
-    const msg = await res.text().catch(() => res.statusText);
-    throw new Error(msg);
+    const body = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(body?.error ?? res.statusText);
   }
   return res;
 }
 
-async function saveRemoteKey(key: string, value: string, label: string, category: string): Promise<void> {
-  await apiFetch(`/config/${encodeURIComponent(key)}`, {
-    method: "PUT",
-    body: JSON.stringify({ value, label, category }),
-  });
-}
+// ── One secret: saved state, replace, remove ──────────────────────────────────
 
-async function deleteRemoteKey(key: string): Promise<void> {
-  await apiFetch(`/config/${encodeURIComponent(key)}`, { method: "DELETE" });
-}
-
-async function fetchRemoteKeys(): Promise<ConfigEntry[]> {
-  const res = await apiFetch("/config");
-  const data = await res.json() as { configs: ConfigEntry[] };
-  return data.configs ?? [];
-}
-
-// ── Predefined key row ────────────────────────────────────────────────────────
-
-function PredefinedKeyRow({
-  keyDef,
-  category,
-  savedEntry,
-  onSaved,
-  onDeleted,
+function SecretRow({
+  def,
+  savedAt,
+  onSave,
+  onRemove,
 }: {
-  keyDef: KeySection["keys"][number];
-  category: string;
-  savedEntry?: ConfigEntry;
-  onSaved: (key: string, label: string, category: string) => void;
-  onDeleted: (key: string) => void;
+  def: KeyDef;
+  /** When it was saved, or "" when saved without a date; undefined when not set. */
+  savedAt?: string;
+  onSave: (value: string) => Promise<void>;
+  onRemove: () => Promise<void>;
 }) {
   const { toast } = useToast();
   const [value, setValue] = useState("");
   const [show, setShow] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const isCrawlerKey = keyDef.key === "crawler_api_key";
-  const isSaved = !!savedEntry;
+  const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const isSaved = savedAt !== undefined;
 
-  const handleSave = useCallback(async () => {
+  const save = async () => {
     if (!value.trim()) return;
-    setSaving(true);
+    setBusy(true);
     try {
-      if (isCrawlerKey) {
-        localStorage.setItem("crawler_api_key", value.trim());
-        window.dispatchEvent(new Event("api-key-updated"));
-      }
-      if (!isCrawlerKey) {
-        await saveRemoteKey(keyDef.key, value.trim(), keyDef.label, category);
-      }
-      onSaved(keyDef.key, keyDef.label, category);
+      await onSave(value.trim());
       setValue("");
-      toast({ title: "Saved", description: `${keyDef.label} saved.` });
-    } catch {
-      toast({ title: "Error", description: `Failed to save ${keyDef.label}.`, variant: "destructive" });
+      setEditing(false);
+      toast({ title: "Saved", description: `${def.label} saved.` });
+    } catch (err) {
+      toast({ title: `${def.label} not saved`, description: (err as Error).message, variant: "destructive" });
     } finally {
-      setSaving(false);
+      setBusy(false);
     }
-  }, [value, keyDef, category, isCrawlerKey, onSaved, toast]);
+  };
 
-  const handleDelete = useCallback(async () => {
+  const remove = async () => {
+    if (!window.confirm(`Remove the ${def.label}?`)) return;
+    setBusy(true);
     try {
-      if (isCrawlerKey) {
-        localStorage.removeItem("crawler_api_key");
-        window.dispatchEvent(new Event("api-key-updated"));
-      } else {
-        await deleteRemoteKey(keyDef.key);
-      }
-      onDeleted(keyDef.key);
-      toast({ title: "Removed", description: `${keyDef.label} cleared.` });
-    } catch {
-      toast({ title: "Error", description: "Failed to remove key.", variant: "destructive" });
+      await onRemove();
+      toast({ title: "Removed", description: `${def.label} removed.` });
+    } catch (err) {
+      toast({ title: `${def.label} not removed`, description: (err as Error).message, variant: "destructive" });
+    } finally {
+      setBusy(false);
     }
-  }, [keyDef, isCrawlerKey, onDeleted, toast]);
+  };
 
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center justify-between">
-        <label className="font-mono text-xs uppercase text-muted-foreground tracking-wider">
-          {keyDef.label}
-          {keyDef.required && <span className="text-destructive ml-1">*</span>}
-        </label>
-        {isSaved && (
-          <div className="flex items-center gap-1.5">
-            <CheckCircle2 className="w-3 h-3 text-green-500" />
-            <span className="font-mono text-xs text-green-600">Configured</span>
-            <button
-              onClick={handleDelete}
-              className="ml-2 text-muted-foreground hover:text-destructive transition-colors"
-              title="Remove key"
-            >
+        <label className="font-mono text-xs uppercase text-muted-foreground tracking-wider">{def.label}</label>
+        {isSaved && !editing && (
+          <div className="flex items-center gap-3">
+            <span className="flex items-center gap-1.5 font-mono text-xs text-green-600">
+              <CheckCircle2 className="w-3 h-3 text-green-500" />
+              Set{savedAt ? ` · ${new Date(savedAt).toLocaleDateString()}` : ""}
+            </span>
+            <button onClick={() => setEditing(true)} className="font-mono text-xs text-muted-foreground hover:text-foreground">
+              Replace
+            </button>
+            <button onClick={remove} disabled={busy} className="text-muted-foreground hover:text-destructive" title="Remove">
               <Trash2 className="w-3.5 h-3.5" />
             </button>
           </div>
         )}
       </div>
-      {isSaved ? (
-        <div className="font-mono text-xs bg-muted/50 border border-border rounded px-3 py-2 text-muted-foreground">
-          {maskKey("••••••••••••")} — last updated {new Date(savedEntry!.updatedAt).toLocaleDateString()}
-        </div>
-      ) : (
+      {(!isSaved || editing) && (
         <div className="flex gap-2">
           <div className="relative flex-1">
             <Input
               type={show ? "text" : "password"}
-              placeholder={keyDef.placeholder}
+              placeholder={def.placeholder}
               value={value}
               onChange={(e) => setValue(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSave()}
+              onKeyDown={(e) => e.key === "Enter" && save()}
               className="font-mono pr-10"
+              autoComplete="off"
             />
             <button
               type="button"
@@ -211,145 +133,149 @@ function PredefinedKeyRow({
               {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
           </div>
-          <Button
-            size="sm"
-            onClick={handleSave}
-            disabled={!value.trim() || saving}
-            className="font-mono font-bold tracking-wider gap-1.5"
-          >
-            <Save className="w-3.5 h-3.5" />
-            {saving ? "SAVING..." : "SAVE"}
+          <Button size="sm" onClick={save} disabled={!value.trim() || busy} className="font-mono gap-1.5">
+            <Save className="w-3.5 h-3.5" /> Save
           </Button>
+          {editing && (
+            <Button size="sm" variant="ghost" onClick={() => { setEditing(false); setValue(""); }}>
+              Cancel
+            </Button>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-// ── Section card ──────────────────────────────────────────────────────────────
-
-function SectionCard({
-  section,
-  configMap,
-  onRefresh,
-}: {
-  section: KeySection;
-  configMap: Map<string, ConfigEntry>;
-  onRefresh: () => void;
-}) {
-  const [open, setOpen] = useState(true);
-
-  const configuredCount = section.keys.filter((k) => {
-    if (k.key === "crawler_api_key") return !!localStorage.getItem("crawler_api_key");
-    return configMap.has(k.key);
-  }).length;
-
-  return (
-    <Card className="border-border">
-      <CardHeader
-        className="cursor-pointer select-none"
-        onClick={() => setOpen((o) => !o)}
-      >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            {open ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
-            <div>
-              <CardTitle className="font-mono">{section.title}</CardTitle>
-              <CardDescription className="mt-0.5">{section.description}</CardDescription>
-            </div>
-          </div>
-          <Badge variant={configuredCount > 0 ? "default" : "secondary"} className="font-mono text-xs shrink-0">
-            {configuredCount}/{section.keys.length} set
-          </Badge>
-        </div>
-      </CardHeader>
-      {open && (
-        <CardContent className="space-y-5 pt-0">
-          {section.keys.map((k) => (
-            <PredefinedKeyRow
-              key={k.key}
-              keyDef={k}
-              category={section.category}
-              savedEntry={
-                k.key === "crawler_api_key"
-                  ? localStorage.getItem("crawler_api_key")
-                    ? { key: k.key, label: k.label, category: "platform", updatedAt: new Date().toISOString() }
-                    : undefined
-                  : configMap.get(k.key)
-              }
-              onSaved={onRefresh}
-              onDeleted={onRefresh}
-            />
-          ))}
-        </CardContent>
-      )}
-    </Card>
-  );
-}
-
-// ── Main page ─────────────────────────────────────────────────────────────────
+// ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function Settings() {
-  const [configMap, setConfigMap] = useState<Map<string, ConfigEntry>>(new Map());
-  const [hasCrawlerKey, setHasCrawlerKey] = useState(!!localStorage.getItem("crawler_api_key"));
-  const [, forceRender] = useState(0);
+  const server = useServerInfo();
+  const [configs, setConfigs] = useState<Map<string, ConfigEntry>>(new Map());
+  const [accessKey, setAccessKey] = useState(getCrawlerApiKey());
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    forceRender((n) => n + 1);
-    const crawlerKey = localStorage.getItem("crawler_api_key");
-    setHasCrawlerKey(!!crawlerKey);
-    // No early return without a key: in local mode the server needs none.
     try {
-      const entries = await fetchRemoteKeys();
-      const map = new Map<string, ConfigEntry>();
-      for (const e of entries) map.set(e.key, e);
-      setConfigMap(map);
-    } catch {
-      // Remote keys unavailable — silently ignore, local sections still work
+      const res = await apiFetch("/config");
+      const data = (await res.json()) as { configs?: ConfigEntry[] };
+      setConfigs(new Map((data.configs ?? []).map((e) => [e.key, e])));
+      setLoadError(null);
+    } catch (err) {
+      setLoadError((err as Error).message);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    void refresh();
+  }, [refresh, accessKey]);
+
+  const saveAccessKey = async (value: string) => {
+    localStorage.setItem("crawler_api_key", value);
+    window.dispatchEvent(new Event("api-key-updated"));
+    setAccessKey(value);
+  };
+  const removeAccessKey = async () => {
+    localStorage.removeItem("crawler_api_key");
+    window.dispatchEvent(new Event("api-key-updated"));
+    setAccessKey("");
+  };
+
+  const saveCrmKey = (def: KeyDef) => async (value: string) => {
+    await apiFetch(`/config/${encodeURIComponent(def.key)}`, {
+      method: "PUT",
+      body: JSON.stringify({ value, label: def.label, category: "crm" }),
+    });
+    await refresh();
+  };
+  const removeCrmKey = (def: KeyDef) => async () => {
+    await apiFetch(`/config/${encodeURIComponent(def.key)}`, { method: "DELETE" });
+    await refresh();
+  };
+
+  const crmSet = CRM_KEYS.filter((k) => configs.has(k.key)).length;
+  const ai = server.data?.ai;
 
   return (
     <div className="max-w-2xl mx-auto space-y-6 animate-in fade-in duration-500">
       <div className="space-y-1">
         <h1 className="text-2xl font-bold font-mono tracking-tight flex items-center gap-2">
-          <Key className="w-6 h-6" /> API Key Management
+          <SettingsIcon className="w-6 h-6" /> Settings
         </h1>
-        <p className="text-muted-foreground text-sm">
-          The access key for a shared RECON server, and the CRM accounts qualified leads are pushed to.
-        </p>
       </div>
 
-      {!hasCrawlerKey && (
-        <div className="rounded-md border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground font-mono">
-          Set your Crawler API key below to unlock server-side key storage for all other services.
-        </div>
-      )}
-
-      {PREDEFINED_SECTIONS.map((section) => (
-        <SectionCard
-          key={section.category}
-          section={section}
-          configMap={configMap}
-          onRefresh={refresh}
-        />
-      ))}
-
+      {/* Access */}
       <Card className="border-border">
         <CardHeader>
           <CardTitle className="font-mono flex items-center gap-2">
-            <Sparkles className="w-4 h-4" /> AI (optional)
+            <KeyRound className="w-4 h-4" /> Access
           </CardTitle>
           <CardDescription>
-            RECON runs free, without AI. To let Gemini help, set AI_INTEGRATIONS_GEMINI_API_KEY,
-            AI_INTEGRATIONS_GEMINI_BASE_URL and RECON_ENABLE_GEMINI=1 in the .env file, then restart RECON.
+            {server.data?.local
+              ? "RECON runs on this PC: no access key is needed."
+              : "The access key of this RECON server. It is kept in this browser."}
           </CardDescription>
         </CardHeader>
+        {server.data && !server.data.local && (
+          <CardContent className="pt-0">
+            <SecretRow
+              def={ACCESS_KEY}
+              savedAt={accessKey ? "" : undefined}
+              onSave={saveAccessKey}
+              onRemove={removeAccessKey}
+            />
+          </CardContent>
+        )}
+      </Card>
+
+      {/* AI */}
+      <Card className="border-border">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="font-mono flex items-center gap-2">
+              <Sparkles className="w-4 h-4" /> AI scoring
+            </CardTitle>
+            {server.data && (
+              <Badge variant={ai ? "default" : "secondary"} className="font-mono text-xs">
+                {ai ? "On" : "Off"}
+              </Badge>
+            )}
+          </div>
+          <CardDescription>
+            {ai
+              ? `Leads are scored by Claude (${ai.model}).`
+              : "Claude is off: leads are scored by the local model. To turn Claude on, set RECON_ENABLE_CLAUDE=1 and ANTHROPIC_API_KEY in .env.local, then restart RECON."}
+          </CardDescription>
+        </CardHeader>
+      </Card>
+
+      {/* CRM */}
+      <Card className="border-border">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="font-mono flex items-center gap-2">
+              <Building2 className="w-4 h-4" /> CRM
+            </CardTitle>
+            <Badge variant={crmSet > 0 ? "default" : "secondary"} className="font-mono text-xs">
+              {crmSet}/{CRM_KEYS.length} set
+            </Badge>
+          </div>
+          <CardDescription>
+            HubSpot or Salesforce account that qualified leads are pushed to from the Lead Qualifier.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-5 pt-0">
+          {loadError && <p className="text-xs text-destructive font-mono">Could not load the CRM settings: {loadError}</p>}
+          {CRM_KEYS.map((def) => (
+            <SecretRow
+              key={def.key}
+              def={def}
+              savedAt={configs.get(def.key)?.updatedAt}
+              onSave={saveCrmKey(def)}
+              onRemove={removeCrmKey(def)}
+            />
+          ))}
+        </CardContent>
       </Card>
     </div>
   );

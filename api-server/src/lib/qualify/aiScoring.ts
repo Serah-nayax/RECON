@@ -234,7 +234,7 @@ function readStatus(value: unknown): SignalStatus {
 
 function readAnswers(raw: unknown, prefix: "q" | "d", signals: string[], content: string): SignalAnswer[] {
   return signals.map((text, i) => {
-    // Each answer names its signal ("q1"…). Answers without one (Gemini, no schema) are read by position.
+    // Each answer names its signal ("q1"…). Answers without one are read by position.
     const items: unknown[] = Array.isArray(raw) ? raw : [];
     const named = items.some((x) => x && typeof x === "object" && "signal" in x);
     const found = named

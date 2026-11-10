@@ -1,13 +1,10 @@
-import { ai, isGeminiConfigured } from "@workspace/integrations-gemini-ai";
 import { logger } from "../logger.js";
 
 // Local-language search terms. Google ranks places by the words people use where they are:
 // in Paris "salle d'arcade" finds most venues, and in Japan "ゲームセンター" finds places that
 // "arcade" never lists. The term as typed is always searched too (see localiseTerms), so a
 // missing or imperfect translation only means fewer extra places, never fewer than before.
-//
-// Free and offline. When a Gemini key is configured (RECON_ENABLE_GEMINI=1) its translation
-// is added on top of the dictionary's.
+// Free and offline: a built-in dictionary.
 
 type Lang =
   | "de" | "fr" | "es" | "it" | "nl" | "pt" | "pl" | "cs" | "sv" | "da" | "no" | "fi"
@@ -250,47 +247,6 @@ async function areaLanguages(area: string, countryCode?: string): Promise<Lang[]
   return code ? COUNTRY_LANGS[code] ?? [] : [];
 }
 
-const geminiCache = new Map<string, string>();
-
-/** Gemini's local term (opt-in, see no-paid-services); the term itself when unsure or failing. */
-async function translateWithGemini(term: string, area: string): Promise<string> {
-  const cacheKey = `${area.toLowerCase().trim()}:${normalise(term)}`;
-  if (geminiCache.has(cacheKey)) return geminiCache.get(cacheKey)!;
-  try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: [
-        {
-          role: "user",
-          parts: [
-            {
-              text: `You are a business search localisation expert. Given a business type and a geographic area, return the single most common local-language term that people would type into Google Maps to find that kind of business in that area.
-
-Rules:
-- If the area is primarily English-speaking (USA, UK, Australia, Canada, New Zealand, Ireland, Singapore, South Africa, etc.) return the original term EXACTLY unchanged.
-- Otherwise translate or adapt to the dominant local language. Use colloquial everyday terms, not formal or academic ones.
-- Return ONLY the search term — nothing else. No quotes, no punctuation, no explanation.
-- If you are not confident about the language or translation, return the original term EXACTLY unchanged.
-
-Area: ${area}
-Business type: ${term}
-Local search term:`,
-            },
-          ],
-        },
-      ],
-    });
-    const raw = response.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? "";
-    const translated = raw.replace(/^["']|["']$/g, "").trim();
-    const result = translated && translated.length <= 120 ? translated : term;
-    geminiCache.set(cacheKey, result);
-    return result;
-  } catch (err) {
-    logger.warn({ area, term, err: err instanceof Error ? err.message : String(err) }, "Gemini term translation failed");
-    return term;
-  }
-}
-
 /**
  * The English synonyms of a term in the dictionary ("laser tag" → "laser game"), whatever the
  * area: a drawn area has no country, so no translation, but "Laser Games" still names a laser tag
@@ -325,7 +281,6 @@ export async function localiseTerms(terms: string[], area: string, countryCode?:
   for (const term of terms) {
     const entry = DICTIONARY[normalise(term)];
     const local = langs.map((lang) => entry?.[lang]).filter((t): t is string => !!t);
-    if (isGeminiConfigured() && langs.length) local.push(await translateWithGemini(term, area));
     for (const t of local) add(t);
     add(term);
     const added = local.filter((t) => normalise(t) !== normalise(term));

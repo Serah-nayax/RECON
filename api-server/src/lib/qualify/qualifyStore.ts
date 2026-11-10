@@ -4,7 +4,7 @@ import { eq, sql } from "drizzle-orm";
 import { logger } from "../logger.js";
 import type { AiUsage } from "./aiUsage.js";
 
-// Review and competitor analyses: made by an earlier version of the qualifier (with Gemini).
+// Review and competitor analyses: made by an earlier version of the qualifier.
 // No longer produced (always null), kept so that older batches still display them.
 export interface ReviewPlatformSummary {
   platform: string;

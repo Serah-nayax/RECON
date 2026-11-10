@@ -1,9 +1,7 @@
 import pRetry, { AbortError } from "p-retry";
-import { ai, isGeminiConfigured } from "@workspace/integrations-gemini-ai";
 import { scoreLeadWithRules } from "./ruleScoring.js";
 import { scoreLeadWithIcp } from "./icpScoring.js";
 import type { PageData } from "./websiteCrawler.js";
-import { isRateLimitError } from "@workspace/integrations-gemini-ai/batch";
 import { crawlSite } from "./websiteCrawler.js";
 import { extractReviewLinks } from "./reviewLinks.js";
 import { extractSocialLinks } from "./socialLinks.js";
@@ -13,7 +11,6 @@ import type { LeadInput } from "./qualifyStore.js";
 import type { SocialIntel } from "./socialLinks.js";
 import { logger } from "../logger.js";
 import { canonicalizeLeadUrl } from "./leadIdentity.js";
-import { runGeminiCall } from "../geminiLimiter.js";
 import { buildAiPrompt, readAssessment, scoreAssessment, type AiPrompt } from "./aiScoring.js";
 import { askClaude, claudeModel, isClaudeConfigured } from "./claudeClient.js";
 import { emptyUsage, type AiUsage } from "./aiUsage.js";
@@ -69,20 +66,10 @@ export interface QualifyResult {
   aiUsage?: AiUsage | null;
 }
 
-function isUnconfiguredAiIntegrationError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  return (
-    message.includes("to use Gemini") ||
-    (message.includes('"code":404') && message.includes("AI Integrations"))
-  );
-}
-
 function isRecoverableAiError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
-  return (
-    isUnconfiguredAiIntegrationError(error) ||
-    isRateLimitError(error) ||
-    /\b(408|429|500|502|503|504|529)\b|rate.?limit|overloaded|timed? ?out|timeout|temporar|unavailable|econnreset|fetch failed|connection error/i.test(message)
+  return /\b(408|429|500|502|503|504|529)\b|rate.?limit|quota|overloaded|timed? ?out|timeout|temporar|unavailable|econnreset|fetch failed|connection error/i.test(
+    message,
   );
 }
 
@@ -91,66 +78,31 @@ function parseModelJson(rawText: string): any {
   return JSON.parse(jsonMatch ? jsonMatch[0] : rawText);
 }
 
-// Gemini 2.5 Flash "thinks" before answering, which adds latency to every lead. Unset keeps
-// the model default; GEMINI_THINKING_BUDGET=0 turns thinking off, or a number caps it.
-function thinkingOption(): { thinkingConfig?: { thinkingBudget: number } } {
-  const raw = process.env.GEMINI_THINKING_BUDGET;
-  if (raw === undefined || raw === "") return {};
-  const thinkingBudget = Number(raw);
-  return Number.isFinite(thinkingBudget) ? { thinkingConfig: { thinkingBudget } } : {};
-}
-
-const geminiModel = () => process.env.GEMINI_MODEL || "gemini-2.5-flash";
-
-// One AI call, returning the raw text and adding the tokens it used to `usage`.
-// Claude when RECON_ENABLE_CLAUDE=1 and its key is set, otherwise Gemini (paced by the Gemini limiter).
+// One Claude call, returning the raw text and adding the tokens it used to `usage`.
 async function requestRawText(
   prompt: AiPrompt,
   leadName: string,
   usage: AiUsage,
   signal?: AbortSignal,
 ): Promise<string> {
-  if (isClaudeConfigured()) {
-    const reply = await askClaude(prompt.instructions, prompt.lead, prompt.schema, signal);
-    usage.calls++;
-    usage.inputTokens += reply.inputTokens;
-    usage.outputTokens += reply.outputTokens;
-    usage.cacheWriteTokens = (usage.cacheWriteTokens ?? 0) + reply.cacheWriteTokens;
-    usage.cacheReadTokens = (usage.cacheReadTokens ?? 0) + reply.cacheReadTokens;
-    logger.info(
-      {
-        lead: leadName,
-        model: usage.model,
-        inputTokens: reply.inputTokens,
-        cacheWriteTokens: reply.cacheWriteTokens,
-        cacheReadTokens: reply.cacheReadTokens,
-        outputTokens: reply.outputTokens,
-      },
-      "Claude call done",
-    );
-    return reply.text;
-  }
-  const response = await runGeminiCall(
-    () =>
-      ai.models.generateContent({
-        model: geminiModel(),
-        contents: [{ role: "user", parts: [{ text: `${prompt.instructions}\n\n${prompt.lead}` }] }],
-        config: {
-          responseMimeType: "application/json",
-          maxOutputTokens: 8192,
-          abortSignal: signal,
-          ...thinkingOption(),
-        },
-      }),
-    signal,
-  );
-  // Gemini bills its "thinking" tokens as output.
-  const meta = response.usageMetadata;
+  const reply = await askClaude(prompt.instructions, prompt.lead, prompt.schema, signal);
   usage.calls++;
-  usage.inputTokens += meta?.promptTokenCount ?? 0;
-  usage.outputTokens += (meta?.candidatesTokenCount ?? 0) + (meta?.thoughtsTokenCount ?? 0);
-  // Empty stays empty, so the parsing rejects it and the call is retried (see askClaude).
-  return response.text ?? "";
+  usage.inputTokens += reply.inputTokens;
+  usage.outputTokens += reply.outputTokens;
+  usage.cacheWriteTokens = (usage.cacheWriteTokens ?? 0) + reply.cacheWriteTokens;
+  usage.cacheReadTokens = (usage.cacheReadTokens ?? 0) + reply.cacheReadTokens;
+  logger.info(
+    {
+      lead: leadName,
+      model: usage.model,
+      inputTokens: reply.inputTokens,
+      cacheWriteTokens: reply.cacheWriteTokens,
+      cacheReadTokens: reply.cacheReadTokens,
+      outputTokens: reply.outputTokens,
+    },
+    "Claude call done",
+  );
+  return reply.text;
 }
 
 /**
@@ -400,25 +352,23 @@ export async function qualifyLead(
     socials: socialLinks,
   };
 
-  if (!isClaudeConfigured() && !isGeminiConfigured()) {
+  if (!isClaudeConfigured()) {
     const result = await scoreFree(lead, icp, pages, socialIntel, inferredSource, "no-ai-key");
     cacheQualification(cacheKey, result, resultCacheTtlMs);
     return result;
   }
 
-  const usage = isClaudeConfigured() ? emptyUsage("claude", claudeModel()) : emptyUsage("gemini", geminiModel());
+  const usage = emptyUsage("claude", claudeModel());
   const askOnce = (): Promise<any> =>
     pRetry(
       async () => {
         let rawText: string;
         try {
-          // Each attempt takes its own paced slot, so retries also respect the quota.
           rawText = await requestRawText(fullPrompt, lead.name, usage, signal);
         } catch (err) {
           if (signal?.aborted) {
             throw new AbortError(new Error("Qualification cancelled"));
           }
-          if (isRateLimitError(err)) throw err;
           if (isRecoverableAiError(err)) throw err;
           throw new AbortError(err instanceof Error ? err : new Error(String(err)));
         }
@@ -431,7 +381,6 @@ export async function qualifyLead(
           );
         }
       },
-      // Free-tier quota resets per minute, so rate-limit waits must be long enough to matter.
       { retries: 4, minTimeout: 3000, maxTimeout: 30000, factor: 2, randomize: true },
     );
 
@@ -441,26 +390,14 @@ export async function qualifyLead(
   } catch (error) {
     if (signal?.aborted) throw new Error("Qualification cancelled");
     if (!isRecoverableAiError(error)) throw withAiUsage(error, usage);
-    // With Claude, the free scorers are not a fallback: they ranked toy shops above arcades on the
-    // Lyon test, and a wrong score looks like a real one. The lead fails instead, so that a retry
-    // (or the resume after a restart) scores it properly.
-    if (isClaudeConfigured()) {
-      throw withAiUsage(
-        new Error(
-          `Claude unavailable after retries, retry this lead later: ${error instanceof Error ? error.message : String(error)}`,
-        ),
-        usage,
-      );
-    }
-    logger.warn(
-      { lead: lead.name, error: error instanceof Error ? error.message : String(error) },
-      "Managed AI scorer unavailable; using rules-based qualification fallback",
+    // The free scorers are not a fallback: a wrong score looks like a real one. The lead fails
+    // instead, so that a retry (or the resume after a restart) scores it properly.
+    throw withAiUsage(
+      new Error(
+        `Claude unavailable after retries, retry this lead later: ${error instanceof Error ? error.message : String(error)}`,
+      ),
+      usage,
     );
-    const fallback = await scoreFree(lead, icp, pages, socialIntel, inferredSource, "ai-unavailable");
-    // Replies that came back unusable were still billed.
-    fallback.aiUsage = usage.calls > 0 ? usage : null;
-    cacheQualification(cacheKey, fallback, 5 * 60 * 1000);
-    return fallback;
   }
 
   let result: QualifyResult;

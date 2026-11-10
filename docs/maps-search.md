@@ -20,15 +20,12 @@ Lists every place of a given kind in an area, from Google Maps.
 
 ## Results
 
-Every place found is stored. The list shows the relevant ones, best-known first:
+Every place found is stored. The list shows them in one list, best-known first.
 
-- **Match**: the name or category contains a searched term.
-- **Probable**: found by the search but less clear (another category, a supplier…).
-
-Places that are clearly unrelated (shops, offices, clinics, schools, bus stops…) are hidden.
+Places found only because of a word in their name, with nothing to do with the search, are not listed: a lawyer's office named "Arcade" in an "arcade" search, for example. A place of the kind searched is always listed: a search for clinics lists clinics.
 
 ## After the search
 
-- **Excel** and **CSV** download the places.
-- **Qualify all** sends the listed places to the Lead Qualifier. Places can also be sent one by one.
+- **Excel** and **CSV** download the places listed.
+- **Qualify All** sends the listed places to the Lead Qualifier. The **Qualify** button on a row sends that place only.
 - Past searches stay on the Maps Search page. **Delete** removes a search that is not running.

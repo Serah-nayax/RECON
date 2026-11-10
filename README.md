@@ -6,8 +6,6 @@
 
 **Search Google Maps for every business of a kind in any area, then score each one against your ideal customer profile.**
 
-[![License: PolyForm Noncommercial](https://img.shields.io/badge/license-PolyForm%20Noncommercial-blue)](LICENSE.md)
-[![Commercial license available](https://img.shields.io/badge/commercial-license%20available-success)](COMMERCIAL-LICENSE.md)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
 ![React](https://img.shields.io/badge/React-20232A?logo=react&logoColor=61DAFB)
 ![Node.js](https://img.shields.io/badge/Node.js-339933?logo=nodedotjs&logoColor=white)
@@ -49,7 +47,6 @@ RECON/
 ├── api-server/          API, Maps and Qualify engines (also serves the dashboard)
 ├── dashboard/           Web app (React + Vite)
 ├── lib/db/              Database schema (Drizzle, PostgreSQL)
-├── lib/integrations-gemini-ai/  Gemini client
 ├── scripts/             Maintenance scripts
 ├── docs/                Guides
 └── start-recon.cmd      Windows launcher
@@ -57,23 +54,6 @@ RECON/
 
 ## License
 
-**Copyright © 2026 Salomon Sverdlov.** Licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE.md).
-
-| Use | Allowed? |
-|---|---|
-| Personal projects, learning, research | Free, with credit to Salomon Sverdlov |
-| Nonprofit and educational use | Free, with credit to Salomon Sverdlov |
-| Selling Recon or any modified version | Requires a paid commercial license |
-| Using Recon to make money | Requires a paid commercial license |
-
-Any copy or modified version must keep the copyright notice and credit **Salomon Sverdlov** as the original author. For commercial terms, see [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md).
+RECON is built on an open-source project by Salomon Sverdlov, under the [PolyForm Noncommercial License 1.0.0](LICENSE.md). Commercial use needs a commercial license: see [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md).
 
 Area data: [GeoNames](https://www.geonames.org) (CC BY 4.0) and [OpenStreetMap](https://www.openstreetmap.org/copyright) (ODbL).
-
-<div align="center">
-
-### Built by Salomon Sverdlov
-
-For enquiries: **[sal.sverdlov@gmail.com](mailto:sal.sverdlov@gmail.com)**
-
-</div>

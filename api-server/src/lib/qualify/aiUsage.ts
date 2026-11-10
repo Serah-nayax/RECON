@@ -2,6 +2,7 @@
 // The provider's console (Claude Console) is the source of truth for billing; these are estimates.
 
 export interface AiUsage {
+  /** "gemini" only on leads scored by an earlier version. */
   provider: "claude" | "gemini";
   model: string;
   /** API calls made for this lead, retries included. */
@@ -40,6 +41,7 @@ const PRICES_PER_MILLION: Record<string, { input: number; output: number; cacheW
   "claude-haiku-5-5": { input: 0.1, output: 0.5, cacheWrite: 0.125, cacheRead: 0.01 },
   "claude-sonnet-5-5": { input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.2 },
   "claude-opus-5-5": { input: 4, output: 20, cacheWrite: 5, cacheRead: 0.2 },
+  // Earlier version, still priced so that its old batches count in the monthly cost.
   "gemini-2.5-flash": { input: 0.3, output: 2.5, cacheWrite: 0.3, cacheRead: 0.3 },
 };
 

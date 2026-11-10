@@ -44,20 +44,13 @@ Settings go in `.env.local` at the repo root. Never commit it.
 
 ### AI for Qualify (Claude)
 
+Without Claude, leads are scored by a local model on the PC.
+
 | Variable | Purpose |
 |---|---|
 | `RECON_ENABLE_CLAUDE` | `1` to use Claude |
 | `ANTHROPIC_API_KEY` | API key from the Claude Console |
 | `CLAUDE_MODEL` | Default `claude-haiku-5-5` |
-
-### AI with Gemini (alternative)
-
-| Variable | Purpose |
-|---|---|
-| `RECON_ENABLE_GEMINI` | `1` to use Gemini |
-| `AI_INTEGRATIONS_GEMINI_API_KEY` | Gemini API key |
-| `AI_INTEGRATIONS_GEMINI_BASE_URL` | `https://generativelanguage.googleapis.com/v1beta` |
-| `GEMINI_MODEL` | Default `gemini-2.5-flash` |
 
 ### Advanced
 
@@ -70,8 +63,9 @@ Settings go in `.env.local` at the repo root. Never commit it.
 
 ## Settings page
 
-- **Crawler API Key**: the access key of a shared RECON server.
-- **CRM Integrations**: HubSpot token or Salesforce credentials, used to push qualified leads. A push updates the existing company (same website domain, or same name) or creates it. The RECON fields (`recon_score`, `recon_verdict`… in HubSpot, `RECON_Score__c`… in Salesforce) must exist in the CRM.
+- **Access**: the access key of a shared RECON server (not needed locally).
+- **AI scoring**: shows whether Claude is on.
+- **CRM**: HubSpot token or Salesforce credentials, used to push qualified leads. A push updates the existing company (same website domain, or same name) or creates it. The RECON fields (`recon_score`, `recon_verdict`… in HubSpot, `RECON_Score__c`… in Salesforce) must exist in the CRM.
 
 ## Troubleshooting
 

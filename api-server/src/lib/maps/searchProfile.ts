@@ -47,7 +47,7 @@ export function isSearchableExpansion(term: string, category: string): boolean {
  * workshops: France laser tag, 6 engravers counted as matches). A term that names one itself keeps it.
  */
 const BLOCKED_CATEGORY =
-  /laser cutting|engrav|welder|dermatolog|hair removal|electrolysis|tattoo|medical|doctor|physician|general practitioner|clinic|dental|dentist|optic|pharmac|facial spa|\bspa\b|print|copy shop|manufacturer|equipment rental|beauty|cosmetic|skin|surg|tanning|massage|\bnails?\b|esthet|epilat/i;
+  /laser cutting|engrav|welder|dermatolog|hair removal|electrolysis|tattoo|medical|doctor|physician|general practitioner|clini[cqk]|dental|dentist|optic|pharmac|facial spa|\bspa\b|print|copy shop|manufacturer|equipment rental|beauty|cosmetic|skin|surg|tanning|massage|\bnails?\b|esthet|epilat/i;
 
 const splitCategories = (category?: string | null) =>
   (category ?? "").split(",").map((c) => c.trim().toLowerCase()).filter(Boolean);
@@ -78,6 +78,8 @@ const termWords = (searchTerms: string[]) => [
 export function isOffTopicPlace(category?: string | null, searchTerms: string[] = []): boolean {
   const categories = splitCategories(category);
   if (categories.length === 0 || !BLOCKED_CATEGORY.test(categories[0])) return false;
+  // A search for such places ("clinic", "pharmacie") keeps them: relevance then judges them on the term.
+  if (searchTerms.some((term) => BLOCKED_CATEGORY.test(term))) return false;
   const words = termWords(searchTerms);
   return !categories.some(
     (c) => !BLOCKED_CATEGORY.test(c) && words.some((word) => c.includes(word)),
@@ -170,7 +172,12 @@ export function placeRelevance(
         .filter((w) => w.length >= 4 && !GENERIC_WORDS.has(w) && !PLACE_WORDS.has(w)),
     ),
   ];
-  const phrases = [...autoTerms, ...synonyms].map(plain).filter(Boolean);
+  // A term made only of generic words ("school", "event venue") is matched as a whole phrase,
+  // or the places it names were hidden.
+  const genericTerms = userTerms.filter(
+    (term) => !plain(term).split(/[^a-z]+/).some((w) => w.length >= 4 && !GENERIC_WORDS.has(w) && !PLACE_WORDS.has(w)),
+  );
+  const phrases = [...autoTerms, ...synonyms, ...genericTerms].map(plain).filter(Boolean);
   const says = (text: string) =>
     words.some((w) => new RegExp(`\\b${w}`).test(text)) || phrases.some((p) => text.includes(p));
   const categories = splitCategories(place.category);
