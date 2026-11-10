@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { HelpCircle, Map, Target, History, Settings, BookOpen, ArrowRight, Layers, FileSpreadsheet, Brain } from "lucide-react";
+import { HelpCircle, Map, ListChecks, History, Settings, BookOpen, Layers, FileSpreadsheet, Brain } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -13,47 +13,36 @@ import { Badge } from "@/components/ui/badge";
 const steps = [
   {
     step: 1,
-    label: "Configure your ICP",
-    page: "ICP Library",
-    href: "/icp",
-    icon: BookOpen,
-    color: "text-violet-400",
-    bg: "bg-violet-400/10",
-    description:
-      "Define who your ideal customer is. Set the signals that qualify or disqualify a lead. The active ICP is used to score every lead.",
-  },
-  {
-    step: 2,
-    label: "Find leads on Maps",
+    label: "Find places",
     page: "Maps Search",
     href: "/maps",
     icon: Map,
-    color: "text-emerald-400",
-    bg: "bg-emerald-400/10",
-    description:
-      "Search Google Maps for any business type in any city or region. Recon collects name, category, rating, reviews, phone and website, lists places matching your search first and hides clearly unrelated ones.",
-  },
-  {
-    step: 3,
-    label: "Score your leads",
-    page: "Lead Qualifier",
-    href: "/qualify",
-    icon: Target,
     color: "text-sky-400",
     bg: "bg-sky-400/10",
     description:
-      "Upload a CSV/Excel file or send leads over from Maps. Recon crawls each website and scores them against your active ICP, returning a 0-100 score, a verdict, and the exact signals it found.",
+      "Choose an area and what to look for. RECON searches Google Maps across the whole area and lists every place of that kind, with its category, address, rating, phone and website.",
   },
   {
-    step: 4,
-    label: "Review & export",
+    step: 2,
+    label: "Score the leads",
     page: "Lead Qualifier",
     href: "/qualify",
+    icon: ListChecks,
+    color: "text-emerald-400",
+    bg: "bg-emerald-400/10",
+    description:
+      "Send the places of a search, or upload a CSV or Excel list. RECON reads each website and scores the lead from 0 to 100 against the active ICP, with a verdict and the reasons.",
+  },
+  {
+    step: 3,
+    label: "Review and export",
+    page: "History",
+    href: "/history",
     icon: FileSpreadsheet,
     color: "text-amber-400",
     bg: "bg-amber-400/10",
     description:
-      "Expand any lead to see its score, verdict and the signals found. Export qualified leads to HubSpot, Salesforce or a spreadsheet.",
+      "Open a qualification to review its leads, then download them as Excel or CSV, or push them to HubSpot or Salesforce.",
   },
 ];
 
@@ -61,16 +50,16 @@ const pages = [
   {
     icon: Map,
     label: "Maps Search",
-    color: "text-emerald-400",
-    bg: "bg-emerald-400/10",
+    color: "text-sky-400",
+    bg: "bg-sky-400/10",
     description: "Discover businesses by type and location, then send them to the Lead Qualifier (one by one or all at once).",
   },
   {
-    icon: Target,
+    icon: ListChecks,
     label: "Lead Qualifier",
-    color: "text-sky-400",
-    bg: "bg-sky-400/10",
-    description: "Bulk-score leads from a CSV or Maps. Each lead gets crawled, analysed, and given a verdict — QUALIFY, BORDERLINE, or DISQUALIFY.",
+    color: "text-emerald-400",
+    bg: "bg-emerald-400/10",
+    description: "Bulk-score leads from a CSV or Maps. Each lead gets a score and a verdict: Qualify, Borderline or Disqualify.",
   },
   {
     icon: History,
@@ -112,7 +101,7 @@ export function HelpModal() {
       </DialogTrigger>
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 font-mono text-primary">
+          <DialogTitle className="flex items-center gap-2">
             <Layers className="h-5 w-5" />
             How Recon works
           </DialogTitle>
@@ -144,7 +133,7 @@ export function HelpModal() {
         {tab === "workflow" && (
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground mb-4">
-              Follow these steps to go from zero to a list of qualified leads ready for outreach.
+              The three steps of the menu, in order. Scoring uses the active profile of the ICP Library.
             </p>
             {steps.map((s, i) => {
               const Icon = s.icon;

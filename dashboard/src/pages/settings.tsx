@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { PageHeader } from "@/components/page-header";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -198,11 +199,7 @@ export default function Settings() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-6 animate-in fade-in duration-500">
-      <div className="space-y-1">
-        <h1 className="text-2xl font-bold font-mono tracking-tight flex items-center gap-2">
-          <SettingsIcon className="w-6 h-6" /> Settings
-        </h1>
-      </div>
+      <PageHeader icon={SettingsIcon} title="Settings" description="Access to this RECON server, AI scoring and CRM account." />
 
       {/* Access */}
       <Card className="border-border">

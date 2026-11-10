@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Activity, Target, Settings, AlertTriangle, History, Map } from "lucide-react";
+import { Radar, Settings, AlertTriangle, History, Map, ListChecks, BookOpen } from "lucide-react";
 import { useEffect, useState } from "react";
 import { HelpModal } from "@/components/help-modal";
 import { getCrawlerApiKey } from "@/lib/crawlerAuth";
@@ -26,44 +26,58 @@ export function Layout({ children }: { children: React.ReactNode }) {
     };
   }, [location]);
 
-  const navLinks = [
-    { href: "/qualify", label: "Lead Qualifier", icon: Target },
-    { href: "/maps", label: "Maps Search", icon: Map },
-    { href: "/history", label: "History", icon: History },
-    { href: "/icp", label: "ICP Library", icon: Target },
+  // The work in order (find, qualify, results), then what configures it.
+  const mainLinks = [
+    { href: "/maps", label: "Maps Search", icon: Map, step: 1 },
+    { href: "/qualify", label: "Lead Qualifier", icon: ListChecks, step: 2 },
+    { href: "/history", label: "History", icon: History, step: 3 },
+  ];
+  const sideLinks = [
+    { href: "/icp", label: "ICP Library", icon: BookOpen },
     { href: "/settings", label: "Settings", icon: Settings },
   ];
+  const linkClass = (href: string) =>
+    `flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors text-sm ${
+      location.startsWith(href)
+        ? "bg-primary/15 text-primary font-medium"
+        : "text-muted-foreground hover:text-foreground hover:bg-muted"
+    }`;
 
   return (
     <div className="flex min-h-screen w-full flex-col bg-background text-foreground selection:bg-primary selection:text-primary-foreground font-sans">
-      <header className="sticky top-0 z-50 flex h-14 items-center gap-4 border-b bg-background/95 px-6 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <Link href="/" className="flex items-center gap-2 font-mono font-bold tracking-tight text-primary transition-colors hover:text-primary/80" data-testid="link-home-logo">
-          <Activity className="h-5 w-5" />
-          <span>RECON_</span>
+      <header className="sticky top-0 z-50 flex h-16 items-center gap-2 border-b bg-background/90 px-6 backdrop-blur">
+        <Link href="/" className="flex items-center gap-2 mr-6 font-semibold tracking-tight text-foreground hover:text-primary transition-colors" data-testid="link-home-logo">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+            <Radar className="h-4.5 w-4.5" />
+          </span>
+          <span className="text-lg">RECON</span>
         </Link>
-        <nav className="flex items-center gap-1 ml-6 text-sm font-medium">
-          {navLinks.map((link) => {
-            const isActive = link.href === "/" ? location === "/" : location.startsWith(link.href);
+        <nav className="flex items-center gap-1">
+          {mainLinks.map((link) => {
             const Icon = link.icon;
             return (
-              <Link
-                key={link.href}
-                href={link.href}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-colors text-sm ${
-                  isActive
-                    ? "bg-primary/10 text-primary font-semibold"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                }`}
-              >
-                <Icon className="h-3.5 w-3.5" />
+              <Link key={link.href} href={link.href} className={linkClass(link.href)}>
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-muted text-[11px] font-semibold text-muted-foreground">
+                  {link.step}
+                </span>
+                <Icon className="h-4 w-4" />
                 {link.label}
               </Link>
             );
           })}
         </nav>
-        <div className="ml-auto">
+        <nav className="ml-auto flex items-center gap-1">
+          {sideLinks.map((link) => {
+            const Icon = link.icon;
+            return (
+              <Link key={link.href} href={link.href} className={linkClass(link.href)}>
+                <Icon className="h-4 w-4" />
+                {link.label}
+              </Link>
+            );
+          })}
           <HelpModal />
-        </div>
+        </nav>
       </header>
 
       {needsKey && !hasApiKey && location !== "/settings" && (
@@ -75,7 +89,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       )}
 
       <main className="flex-1 flex flex-col items-center">
-        <div className="w-full max-w-5xl px-6 py-8">
+        <div className="w-full max-w-6xl px-6 py-10">
           {children}
         </div>
       </main>

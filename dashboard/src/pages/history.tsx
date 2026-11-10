@@ -1,11 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
+import { PageHeader } from "@/components/page-header";
 import { format } from "date-fns";
 import { qualifyApi } from "@/lib/qualifyApi";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Target, ArrowRight, CheckCircle2, XCircle, Clock, AlertCircle, Square } from "lucide-react";
+import { History as HistoryIcon, Loader2, Target, ArrowRight, CheckCircle2, XCircle, Clock, AlertCircle, Square } from "lucide-react";
 
 function StatusBadge({ status }: { status: string }) {
   switch (status) {
@@ -42,12 +43,14 @@ export default function History() {
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div>
-        <h1 className="text-3xl font-mono font-bold tracking-tight mb-2">HISTORY</h1>
-        <p className="text-muted-foreground">Every qualification batch, kept across sessions. Past Maps searches are listed on the Maps Search page.</p>
-      </div>
+      <PageHeader
+        icon={HistoryIcon}
+        step={3}
+        title="History"
+        description="Every qualification, kept. Open one to review its leads and download them. Past searches are on the Maps Search page."
+      />
 
-        <Card className="border-muted/50 bg-card/50">
+        <Card>
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <Target className="h-4 w-4 text-primary" />
@@ -58,7 +61,7 @@ export default function History() {
             {batchLoading ? (
               <div className="flex items-center justify-center p-8 text-muted-foreground">
                 <Loader2 className="h-5 w-5 animate-spin mr-2" />
-                <span className="font-mono text-sm">LOADING...</span>
+                <span className="text-sm">Loading…</span>
               </div>
             ) : batchError ? (
               <div className="flex items-center justify-center p-8 text-destructive gap-2">
@@ -68,7 +71,7 @@ export default function History() {
             ) : batches.length === 0 ? (
               <div className="text-center p-8 text-muted-foreground border border-dashed border-muted rounded-lg">
                 <Target className="h-8 w-8 mx-auto mb-2 opacity-30" />
-                <p className="font-mono text-sm">NO_BATCHES_YET</p>
+                <p className="text-sm font-medium">No qualification yet</p>
                 <p className="text-xs mt-1">Run a lead qualification batch to see history here.</p>
               </div>
             ) : (

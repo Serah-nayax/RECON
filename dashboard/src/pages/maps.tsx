@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { PageHeader } from "@/components/page-header";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -715,7 +716,8 @@ export function MapsSearch() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  // ?job=<id> opens a past search (links from the home page).
+  const [activeJobId, setActiveJobId] = useState<string | null>(() => new URLSearchParams(window.location.search).get("job"));
   const [searchTerms, setSearchTerms] = useState<string[]>([]);
   const [termInput, setTermInput] = useState("");
   const [label, setLabel] = useState("");
@@ -981,7 +983,7 @@ export function MapsSearch() {
   if (activeJobId) {
     return (
       <div className="space-y-6">
-        <JobProgress jobId={activeJobId} onBack={() => setActiveJobId(null)} />
+        <JobProgress jobId={activeJobId} onBack={() => { setActiveJobId(null); window.history.replaceState(null, "", window.location.pathname); }} />
       </div>
     );
   }
@@ -990,13 +992,12 @@ export function MapsSearch() {
     <div className="space-y-6">
       {/* ── Header ───────────────────────────────────────────────────── */}
       <div>
-        <div className="flex items-center gap-2 mb-1">
-          <Map className="h-5 w-5 text-primary" />
-          <h1 className="text-xl font-bold font-mono">Maps Search</h1>
-        </div>
-        <p className="text-sm text-muted-foreground">
-          Scrape Google Maps for any type of business, anywhere in the world.
-        </p>
+        <PageHeader
+          icon={Map}
+          step={1}
+          title="Maps Search"
+          description="Choose an area and what to look for: RECON lists every place of that kind found on Google Maps."
+        />
         {activeIcp && (
           <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg border border-primary/20 bg-primary/5 text-xs font-mono">
             <Target className="h-3.5 w-3.5 text-primary shrink-0" />
@@ -1008,7 +1009,7 @@ export function MapsSearch() {
       </div>
 
       {/* ── Step 1: Area(s) ──────────────────────────────────────────── */}
-      <Card className="border-muted/30 bg-background/50">
+      <Card>
         <CardContent className="pt-5 pb-4">
           <div className="space-y-1.5">
             <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
@@ -1139,7 +1140,7 @@ export function MapsSearch() {
       {/* ── Step 3: Search term + Fields + Launch ────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_290px] gap-6">
         {/* Search term + warnings + submit */}
-        <Card className="border-muted/30 bg-background/50">
+        <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base font-mono">What to Search</CardTitle>
           </CardHeader>
@@ -1303,7 +1304,7 @@ export function MapsSearch() {
 
         {/* Field selector */}
         <div className="space-y-4">
-          <Card className="border-muted/30 bg-background/50">
+          <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-mono">Data Fields</CardTitle>
               <CardDescription className="text-xs">

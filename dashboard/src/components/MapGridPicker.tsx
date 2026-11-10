@@ -160,7 +160,7 @@ export function MapGridPicker({
   return (
     <div className="flex flex-col gap-0">
       {/* Toolbar */}
-      <div className="flex items-center justify-between px-3 py-2 border border-b-0 border-muted/30 rounded-t-lg bg-muted/5">
+      <div className="flex items-center justify-between px-3 py-2 border border-b-0 border-border rounded-t-lg bg-card">
         <span className="text-[11px] font-mono text-muted-foreground">
           {drawing ? (
             <span className="text-primary animate-pulse">Click and drag on the map to draw your area</span>
@@ -227,7 +227,7 @@ export function MapGridPicker({
       </div>
 
       {/* Map */}
-      <div className="rounded-b-lg overflow-hidden border border-muted/30" style={{ height: 380 }}>
+      <div className="rounded-b-lg overflow-hidden border border-border" style={{ height: 380 }}>
         <MapContainer
           center={[20, 0]}
           zoom={2}

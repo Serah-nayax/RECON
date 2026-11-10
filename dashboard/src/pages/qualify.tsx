@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { PageHeader } from "@/components/page-header";
 import { Link, useSearch } from "wouter";
 import * as XLSX from "xlsx";
 import { useToast } from "@/hooks/use-toast";
@@ -10,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import {
   Loader2, Upload, Play, Download, ChevronDown, ChevronUp,
-  CheckCircle2, XCircle, Clock, Globe, Settings, FileSpreadsheet, Info, Send,
+  CheckCircle2, XCircle, Clock, Globe, Settings, FileSpreadsheet, ListChecks, BookOpen, Info, Send,
   ArrowRight, FileText, Square, RotateCcw, PlusCircle,
   User, Mail, Phone, ExternalLink, Users, Copy, Check, Star,
 } from "lucide-react";
@@ -1079,7 +1080,7 @@ function LeadRow({
                 ) : (
                   <Send className="h-3 w-3" />
                 )}
-                {pushStatus === "done" ? "PUSHED" : pushStatus === "error" ? "RETRY" : "PUSH"}
+                {pushStatus === "done" ? "Pushed" : pushStatus === "error" ? "RETRY" : "PUSH"}
               </button>
             )}
             {isDone && (
@@ -1314,35 +1315,34 @@ export function Qualify() {
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-3xl font-mono font-bold tracking-tight mb-2">LEAD_QUALIFIER</h1>
-          <p className="text-muted-foreground">
-            Upload any CSV or Excel file — we detect columns automatically and crawl each lead.
-            {icp && <span className="text-primary ml-1 font-mono text-sm">[ {icp.name} ]</span>}
-          </p>
-        </div>
-        <Link href="/icp">
-          <Button variant="outline" size="sm" className="font-mono text-xs">
-            <Settings className="h-3 w-3 mr-1" /> ICP SETTINGS
-          </Button>
-        </Link>
-      </div>
+      <PageHeader
+        icon={ListChecks}
+        step={2}
+        title="Lead Qualifier"
+        description={<>RECON reads each lead’s website and scores it from 0 to 100 against the active ICP{icp && <>: <span className="text-foreground font-medium">{icp.name}</span></>}.</>}
+        actions={
+          <Link href="/icp">
+            <Button variant="outline" size="sm">
+              <BookOpen className="h-4 w-4" /> Change ICP
+            </Button>
+          </Link>
+        }
+      />
 
       {!activeBatchId && (
         <div className="grid md:grid-cols-2 gap-4">
           {/* Upload panel */}
-          <Card className="border-muted/50 bg-card/50">
+          <Card>
             <CardHeader>
               <div className="flex gap-2 mb-1">
                 <button
                   className={`text-xs font-mono px-3 py-1 rounded ${inputMode === "file" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
                   onClick={() => setInputMode("file")}
-                >FILE UPLOAD</button>
+                >Upload a file</button>
                 <button
                   className={`text-xs font-mono px-3 py-1 rounded ${inputMode === "paste" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
                   onClick={() => setInputMode("paste")}
-                >PASTE CSV</button>
+                >Paste a list</button>
               </div>
               <CardDescription>
                 Any column layout — headers are detected automatically. Supports CSV, Excel (.xlsx/.xls), and tab-separated files.
@@ -1407,7 +1407,7 @@ export function Qualify() {
           </Card>
 
           {/* Loaded leads panel */}
-          <Card className="border-muted/50 bg-card/50">
+          <Card>
             <CardHeader>
               <CardTitle className="text-base">Loaded Leads</CardTitle>
               <CardDescription>{leads.length} lead{leads.length !== 1 ? "s" : ""} ready for qualification</CardDescription>
@@ -1416,8 +1416,8 @@ export function Qualify() {
               {leads.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground border border-dashed border-muted rounded-lg">
                   <Upload className="h-6 w-6 mx-auto mb-2 opacity-40" />
-                  <p className="font-mono text-sm">NO_LEADS_LOADED</p>
-                  <p className="text-xs mt-1">Upload a CSV or Excel file to get started</p>
+                  <p className="text-sm font-medium">No leads yet</p>
+                  <p className="text-xs mt-1">Upload a file, or send places from a Maps search</p>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -1464,7 +1464,7 @@ export function Qualify() {
       {/* Results */}
       {activeBatchId && batch && (
         <div className="space-y-4">
-          <Card className="border-muted/50 bg-card/50">
+          <Card>
             <CardContent className="pt-4">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-3">
@@ -1475,7 +1475,7 @@ export function Qualify() {
                       : <CheckCircle2 className="h-5 w-5 text-emerald-500" />}
                   <div>
                     <p className="font-mono font-bold text-sm">
-                      {!isDone ? "QUALIFYING LEADS..." : isStopped ? "QUALIFICATION STOPPED" : "QUALIFICATION COMPLETE"}
+                      {!isDone ? "Qualifying leads…" : isStopped ? "Qualification stopped" : "Qualification complete"}
                     </p>
                     <p className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
                       <span>{batch.completedCount} / {batch.totalCount} processed</span>
@@ -1544,13 +1544,13 @@ export function Qualify() {
                       {bulkPushStatus === "done"
                         ? "PUSHED"
                         : bulkPushStatus === "pushing"
-                        ? "PUSHING..."
-                        : `PUSH ${qualifyCount} QUALIFIED`}
+                        ? "Pushing…"
+                        : `Push ${qualifyCount} qualified`}
                     </Button>
                   )}
                   {isDone && (
                     <Button size="sm" variant="outline" className="font-mono text-xs" onClick={() => exportXlsx(batch)}>
-                      <Download className="h-3 w-3 mr-1" /> EXPORT XLSX
+                      <Download className="h-3 w-3 mr-1" /> Export Excel
                     </Button>
                   )}
                   {isDone && batch.leads.some((l) => l.status !== "done") && (
@@ -1564,7 +1564,7 @@ export function Qualify() {
                       {retryMutation.isPending
                         ? <Loader2 className="h-3 w-3 mr-1 animate-spin" />
                         : <RotateCcw className="h-3 w-3 mr-1" />}
-                      {isStopped ? "RESUME UNSCORED" : "RETRY INCOMPLETE"}
+                      {isStopped ? "Resume unscored" : "Retry incomplete"}
                     </Button>
                   )}
                   <Button
@@ -1573,7 +1573,7 @@ export function Qualify() {
                     className="font-mono text-xs text-muted-foreground"
                     onClick={() => { setActiveBatchId(null); setLeads([]); setParsed(null); setBulkPushStatus("idle"); setVerdictTab("ALL"); setElapsedSeconds(0); }}
                   >
-                    <PlusCircle className="h-3 w-3 mr-1" /> NEW BATCH
+                    <PlusCircle className="h-3 w-3 mr-1" /> New batch
                   </Button>
                 </div>
               </div>
@@ -1653,7 +1653,7 @@ export function Qualify() {
             ];
 
             return (
-              <Card className="border-muted/50 bg-card/50 overflow-hidden">
+              <Card className="overflow-hidden">
                 <CardHeader className="pb-0">
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-base">Results</CardTitle>

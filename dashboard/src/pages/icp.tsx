@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
+import { PageHeader } from "@/components/page-header";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { icpApi, type IcpConfig } from "@/lib/qualifyApi";
@@ -10,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import {
   Loader2, Save, RotateCcw, Plus, X, Target, ShieldCheck, ShieldX, BarChart3,
-  Zap, Trash2, CheckCircle2, Map, FileText,
+  Zap, Trash2, CheckCircle2, Map, FileText, BookOpen,
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -206,7 +207,7 @@ function IcpEditor({
 
       {activeTab === "overview" && (
         <div className="space-y-4">
-          <Card className="border-muted/50 bg-card/50">
+          <Card>
             <CardHeader>
               <CardTitle className="text-base">Profile Name</CardTitle>
               <CardDescription>A short label for this ICP (shown in batch reports).</CardDescription>
@@ -220,7 +221,7 @@ function IcpEditor({
               />
             </CardContent>
           </Card>
-          <Card className="border-muted/50 bg-card/50">
+          <Card>
             <CardHeader>
               <CardTitle className="text-base">ICP Description</CardTitle>
               <CardDescription>Describe who you are selling to. Be specific — given to the AI for lead scoring.</CardDescription>
@@ -239,7 +240,7 @@ function IcpEditor({
 
       {activeTab === "signals" && (
         <div className="grid md:grid-cols-2 gap-4">
-          <Card className="border-muted/50 bg-card/50">
+          <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 <ShieldCheck className="h-4 w-4 text-emerald-500" />
@@ -267,7 +268,7 @@ function IcpEditor({
             </CardContent>
           </Card>
 
-          <Card className="border-muted/50 bg-card/50">
+          <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 <ShieldX className="h-4 w-4 text-rose-500" />
@@ -298,7 +299,7 @@ function IcpEditor({
       )}
 
       {activeTab === "bands" && (
-        <Card className="border-muted/50 bg-card/50">
+        <Card>
           <CardHeader>
             <CardTitle className="text-base">Score Bands</CardTitle>
             <CardDescription>Define what each score range means for your qualification process.</CardDescription>
@@ -325,7 +326,7 @@ function IcpEditor({
       )}
 
       {activeTab === "prompt" && (
-        <Card className="border-muted/50 bg-card/50">
+        <Card>
           <CardHeader>
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -479,32 +480,26 @@ export function IcpSettings() {
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-3xl font-mono font-bold tracking-tight mb-2">ICP_LIBRARY</h1>
-          <p className="text-muted-foreground">Manage your Ideal Customer Profiles. The active one is used for all lead scoring.</p>
-        </div>
-        <div className="flex gap-2">
+      <PageHeader
+        icon={BookOpen}
+        title="ICP Library"
+        description="Ideal customer profiles: who we sell to. The active profile is used to score every lead."
+        actions={<>
           <Button
             variant="outline"
             size="sm"
             onClick={() => resetMutation.mutate()}
             disabled={resetMutation.isPending}
-            className="font-mono text-xs"
           >
-            {resetMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <RotateCcw className="h-3 w-3 mr-1" />}
-            RESET_DEFAULT
+            {resetMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+            Reset default
           </Button>
-          <Button
-            size="sm"
-            onClick={() => setShowNewForm(true)}
-            className="font-mono font-bold"
-          >
-            <Plus className="h-4 w-4 mr-1" />
-            NEW_ICP
+          <Button size="sm" onClick={() => setShowNewForm(true)}>
+            <Plus className="h-4 w-4" />
+            New ICP
           </Button>
-        </div>
-      </div>
+        </>}
+      />
 
       {showNewForm && (
         <Card className="border-primary/40 bg-primary/5">

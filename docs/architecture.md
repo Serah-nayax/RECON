@@ -29,10 +29,12 @@ The API also serves the built dashboard, so RECON runs as a single process.
 
 | Path | Role |
 |---|---|
+| `pages/home.tsx` | Home: the three steps, active ICP, recent work |
 | `pages/maps.tsx` | Maps search |
 | `pages/qualify.tsx` | Lead Qualifier |
 | `pages/icp.tsx`, `history.tsx`, `settings.tsx` | ICPs, history, settings |
 | `components/MapGridPicker.tsx` | Map with the search grid |
+| `components/layout.tsx` | Menu: the three steps in order, then ICP Library and Settings |
 | `lib/` | API calls and Excel export |
 
 ## Database
