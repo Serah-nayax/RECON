@@ -6,6 +6,7 @@ import * as XLSX from "xlsx";
 import { useToast } from "@/hooks/use-toast";
 import { qualifyApi, icpApi, crmApi, type LeadInput, type QualifyBatch, type LeadResult, type CrmTarget } from "@/lib/qualifyApi";
 import { exportXlsx } from "@/lib/exportXlsx";
+import { QualifyIcpDialog } from "@/components/QualifyIcpDialog";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -1163,9 +1164,20 @@ export function Qualify() {
   const currentMonth = new Date().toISOString().slice(0, 7);
   const monthUsage = usageByMonth?.months.find((m) => m.month === currentMonth);
 
+  const [icpDialogOpen, setIcpDialogOpen] = useState(false);
+  // The ICP is confirmed (or changed) in a dialog first, since the Qualifier scores with the active ICP.
   const submitMutation = useMutation({
-    mutationFn: (l: LeadInput[]) => qualifyApi.submit(l),
+    mutationFn: async ({ leads: l, icpId, changed }: { leads: LeadInput[]; icpId: string; changed: boolean }) => {
+      if (changed) {
+        await icpApi.activate(icpId);
+        queryClient.invalidateQueries({ queryKey: ["icp-active"] });
+        queryClient.invalidateQueries({ queryKey: ["active-icp"] });
+        queryClient.invalidateQueries({ queryKey: ["icps"] });
+      }
+      return qualifyApi.submit(l);
+    },
     onSuccess: (res) => {
+      setIcpDialogOpen(false);
       setActiveBatchId(res.batchId);
       toast({ title: "Batch submitted", description: `Qualifying ${res.totalCount} leads…` });
     },
@@ -1437,12 +1449,20 @@ export function Qualify() {
                   )}
                   <Button
                     className="w-full"
-                    onClick={() => submitMutation.mutate(leads)}
+                    onClick={() => setIcpDialogOpen(true)}
                     disabled={submitMutation.isPending || leads.length === 0 || (parsed?.summary.colMap.url === -1 && parsed?.summary.colMap.name === -1)}
                   >
                     {submitMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
                     Qualify {leads.length} lead{leads.length !== 1 ? "s" : ""}
                   </Button>
+                  <QualifyIcpDialog
+                    open={icpDialogOpen}
+                    onOpenChange={setIcpDialogOpen}
+                    count={leads.length}
+                    searchTerms={[]}
+                    onConfirm={(icpId, changed) => submitMutation.mutate({ leads, icpId, changed })}
+                    pending={submitMutation.isPending}
+                  />
                 </div>
               )}
             </CardContent>

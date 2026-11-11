@@ -55,14 +55,14 @@ export function QualifyIcpDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-xl">
         <DialogHeader>
-          <DialogTitle>Which ICP scores these {count.toLocaleString()} places?</DialogTitle>
+          <DialogTitle>Which ICP scores these {count.toLocaleString()} leads?</DialogTitle>
           <DialogDescription>
             {searchTerms.length > 0 && (
               <>
                 Searched: <span className="text-foreground">{searchTerms.join(", ")}</span>.{" "}
               </>
             )}
-            The places are scored against one ICP. Keep the active one or pick the one that fits this search.
+            They are all scored against one ICP. Keep the active one or pick the one that fits these leads.
           </DialogDescription>
         </DialogHeader>
 
@@ -117,7 +117,7 @@ export function QualifyIcpDialog({
           </Button>
           <Button onClick={() => selected && onConfirm(selected, changed)} disabled={!selected || pending}>
             {pending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Target className="h-4 w-4 mr-2" />}
-            Qualify {count.toLocaleString()} places
+            Qualify {count.toLocaleString()} leads
           </Button>
         </DialogFooter>
       </DialogContent>
