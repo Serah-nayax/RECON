@@ -98,6 +98,8 @@ async function ensureWarm(instructions: string, schema: JsonSchema, signal?: Abo
  * call writes them to the cache, and the following calls within 5 minutes read them at 0.1x the
  * input price. Each read refreshes the 5 minutes, so a running batch keeps the cache warm.
  * cacheWriteTokens includes what the pre-warm request wrote, if this call triggered one.
+ * `cache: false` (the sales notes, short and asked for a few leads only) skips the cache and the
+ * pre-warm: the pre-warm keeps one set of instructions warm, and alternating two would rewrite it.
  * The reply is constrained to `schema` (structured outputs), so it is always valid JSON.
  */
 export async function askClaude(
@@ -105,21 +107,23 @@ export async function askClaude(
   lead: string,
   schema: JsonSchema,
   signal?: AbortSignal,
+  options: { cache?: boolean } = {},
 ): Promise<ClaudeReply> {
-  const warmWriteTokens = await ensureWarm(instructions, schema, signal);
+  const cache = options.cache !== false;
+  const warmWriteTokens = cache ? await ensureWarm(instructions, schema, signal) : 0;
   const response = await getClient().messages.create(
     {
       model: claudeModel(),
       // Replies reach ~3,600 tokens; a cut-off reply is incomplete JSON, so leave room.
       max_tokens: 8192,
-      system: systemBlock(instructions),
+      system: cache ? systemBlock(instructions) : instructions,
       messages: [{ role: "user", content: lead }],
       output_config: { format: { type: "json_schema", schema } },
     },
     { signal },
   );
   // A cache read or write restarts the cache lifetime.
-  if (instructions + JSON.stringify(schema) === warmKey) warmUntil = Date.now() + WARM_FOR_MS;
+  if (cache && instructions + JSON.stringify(schema) === warmKey) warmUntil = Date.now() + WARM_FOR_MS;
   // A reply cut by max_tokens or a refusal may not match the schema: qualifyLead's JSON parsing
   // rejects it and retries, and its tokens are still counted (they are billed).
   const text = response.content

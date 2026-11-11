@@ -75,7 +75,6 @@ export function buildAnswerSchema(icp: IcpConfig): Record<string, unknown> {
     icpFitReason: str,
     qualifySignals: signalAnswers("q", icp.qualifySignals),
     disqualifySignals: signalAnswers("d", icp.disqualifySignals),
-    painPoints: { type: "array", items: str },
     venueIntel: obj({
       estimatedMachineCount: str,
       paymentSystem: str,
@@ -86,18 +85,58 @@ export function buildAnswerSchema(icp: IcpConfig): Record<string, unknown> {
       hasPartyRooms: { type: "boolean" },
       isChain: { type: "boolean" },
       chainName: strOrNull,
-    }),
-    outreachIntel: obj({
-      pitchAngle: str,
       competitorSystem: strOrNull,
-      decisionMakers: {
-        type: "array",
-        items: obj({ name: str, title: strOrNull, email: strOrNull, phone: strOrNull }),
-      },
-      openingHook: strOrNull,
     }),
+  });
+}
+
+/** JSON schema of the sales notes, written once per lead worth contacting. */
+export function buildOutreachSchema(): Record<string, unknown> {
+  return obj({
+    painPoints: { type: "array", items: str },
+    pitchAngle: str,
+    openingHook: strOrNull,
+    decisionMakers: {
+      type: "array",
+      items: obj({ name: str, title: strOrNull, email: strOrNull, phone: strOrNull }),
+    },
     recommendedAction: str,
   });
+}
+
+// Sales notes are not part of the score: they used to be written in every opinion (two or three
+// per lead) and for every lead, rejected ones included, and only one copy was ever kept. They are
+// now asked once, after the verdict, and only for leads that are QUALIFY or BORDERLINE. The scoring
+// answer is unchanged up to its last fact (they came after it), so the scores are unaffected.
+export function buildOutreachPrompt(
+  icp: IcpConfig,
+  leadContext: string,
+  verdict: { score: number; verdict: string; explanation: string; keySignals: string[] },
+): AiPrompt {
+  return {
+    instructions: `You write short sales notes for a lead already qualified against an ideal customer profile (ICP).
+
+ICP: ${icp.name}
+${icp.description}
+
+Use only facts from the lead's details and website content. Write in English, whatever the language of the site.
+
+Return ONLY valid JSON with this exact structure:
+{
+  "painPoints": ["<5-10 word operational problem this company has that the ICP's offer solves>", ... up to 4],
+  "pitchAngle": "<1-2 sentence pitch for THIS company>",
+  "openingHook": "<one sentence referencing something found on the site, or null>",
+  "decisionMakers": [{"name": "<string>", "title": <string | null>, "email": <direct email only, never info@/contact@, or null>, "phone": <string | null>}],
+  "recommendedAction": "<specific next action for the sales team>"
+}`,
+    lead: `${leadContext}
+
+QUALIFICATION RESULT: ${verdict.verdict} (score ${verdict.score}/100). ${verdict.explanation}
+${verdict.keySignals.length ? `Evidence found:\n- ${verdict.keySignals.join("\n- ")}` : "No qualify signal confirmed."}
+
+Write the sales notes for this lead. Return ONLY the JSON.`,
+    schema: buildOutreachSchema(),
+  };
 }
 
 export interface AiPrompt {
@@ -210,7 +249,6 @@ Return ONLY valid JSON with this exact structure:
   "icpFitReason": "<one sentence>",
   "qualifySignals": [{"signal": "q1", "evidence": "<exact quote or empty>", "label": "<3-6 words>", "status": "met" | "not_met" | "unknown"}, ... one per qualify signal],
   "disqualifySignals": [{"signal": "d1", "evidence": "<exact quote or empty>", "label": "<3-6 words>", "status": "met" | "not_met" | "unknown"}, ... one per disqualify signal],
-  "painPoints": ["<5-10 word operational problem this company has that the ICP's offer solves>", ... up to 4],
   "venueIntel": {
     "estimatedMachineCount": "<e.g. 50+, 20-30, 2-3, unknown>",
     "paymentSystem": "<e.g. token/coin-op, cashless (card system), mixed, unknown>",
@@ -220,15 +258,9 @@ Return ONLY valid JSON with this exact structure:
     "hasFoodBeverage": <boolean>,
     "hasPartyRooms": <boolean>,
     "isChain": <boolean>,
-    "chainName": <string | null>
-  },
-  "outreachIntel": {
-    "pitchAngle": "<1-2 sentence pitch for THIS company>",
-    "competitorSystem": <name of an existing cashless/card system found, or null>,
-    "decisionMakers": [{"name": "<string>", "title": <string | null>, "email": <direct email only, never info@/contact@, or null>, "phone": <string | null>}],
-    "openingHook": "<one sentence referencing something found on the site, or null>"
-  },
-  "recommendedAction": "<specific next action for the sales team>"
+    "chainName": <string | null>,
+    "competitorSystem": <name of an existing cashless/card system found, or null>
+  }
 }`;
 }
 

@@ -11,7 +11,7 @@ import type { LeadInput } from "./qualifyStore.js";
 import type { SocialIntel } from "./socialLinks.js";
 import { logger } from "../logger.js";
 import { canonicalizeLeadUrl } from "./leadIdentity.js";
-import { buildAiPrompt, readAssessment, scoreAssessment, type AiPrompt } from "./aiScoring.js";
+import { buildAiPrompt, buildOutreachPrompt, readAssessment, scoreAssessment, type AiPrompt } from "./aiScoring.js";
 import { askClaude, claudeModel, isClaudeConfigured } from "./claudeClient.js";
 import { emptyUsage, type AiUsage } from "./aiUsage.js";
 
@@ -84,8 +84,9 @@ async function requestRawText(
   leadName: string,
   usage: AiUsage,
   signal?: AbortSignal,
+  options: { cache?: boolean } = {},
 ): Promise<string> {
-  const reply = await askClaude(prompt.instructions, prompt.lead, prompt.schema, signal);
+  const reply = await askClaude(prompt.instructions, prompt.lead, prompt.schema, signal, options);
   usage.calls++;
   usage.inputTokens += reply.inputTokens;
   usage.outputTokens += reply.outputTokens;
@@ -430,6 +431,27 @@ export async function qualifyLead(
       opinions.length > 2 ? "AI opinions disagreed, a third decided" : "AI opinions compared",
     );
 
+    // Sales notes: one call, only for a lead worth contacting. A failure keeps the score.
+    let notes: any = null;
+    if (scored.verdict !== "DISQUALIFY") {
+      try {
+        const outreachPrompt = buildOutreachPrompt(icp, leadContext, scored);
+        notes = await pRetry(
+          async () => {
+            const rawText = await requestRawText(outreachPrompt, lead.name, usage, signal, { cache: false });
+            return parseModelJson(rawText);
+          },
+          { retries: 2, minTimeout: 3000, maxTimeout: 15000, factor: 2, randomize: true },
+        );
+      } catch (err) {
+        if (signal?.aborted) throw new Error("Qualification cancelled");
+        logger.warn(
+          { lead: lead.name, error: err instanceof Error ? err.message : String(err) },
+          "Sales notes failed; the lead keeps its score",
+        );
+      }
+    }
+
     const venueIntel: VenueIntel | null = parsed.venueIntel
       ? {
           estimatedMachineCount: String(parsed.venueIntel.estimatedMachineCount ?? "unknown"),
@@ -444,7 +466,7 @@ export async function qualifyLead(
         }
       : null;
 
-    const rawDMs = parsed.outreachIntel?.decisionMakers;
+    const rawDMs = notes?.decisionMakers;
     const decisionMakers: DecisionMaker[] = Array.isArray(rawDMs)
       ? rawDMs
           .filter((d: unknown) => d && typeof d === "object" && typeof (d as Record<string, unknown>).name === "string")
@@ -456,14 +478,12 @@ export async function qualifyLead(
           }))
       : [];
 
-    const outreachIntel: OutreachIntel | null = parsed.outreachIntel
-      ? {
-          pitchAngle: String(parsed.outreachIntel.pitchAngle ?? ""),
-          competitorSystem: parsed.outreachIntel.competitorSystem ?? null,
-          decisionMakers,
-          openingHook: parsed.outreachIntel.openingHook ?? null,
-        }
-      : null;
+    const outreachIntel: OutreachIntel = {
+      pitchAngle: typeof notes?.pitchAngle === "string" ? notes.pitchAngle : "",
+      competitorSystem: parsed.venueIntel?.competitorSystem ?? null,
+      decisionMakers,
+      openingHook: notes?.openingHook ?? null,
+    };
 
     const missingSignals = pages.length === 0
       ? [hasWebsite ? "website could not be crawled" : "no website listed on Google Maps", ...scored.missingSignals]
@@ -487,10 +507,12 @@ export async function qualifyLead(
       icpExplanation: scored.explanation,
       keySignals: scored.keySignals,
       missingSignals: missingSignals.slice(0, 8),
-      painPoints: Array.isArray(parsed.painPoints) ? parsed.painPoints.slice(0, 4) : [],
+      painPoints: Array.isArray(notes?.painPoints) ? notes.painPoints.slice(0, 4) : [],
       venueIntel,
       outreachIntel,
-      recommendedAction: parsed.recommendedAction || "Review manually.",
+      recommendedAction:
+        notes?.recommendedAction ||
+        (scored.verdict === "DISQUALIFY" ? "Not a fit for this ICP: no outreach needed." : "Review manually."),
       crawledPages: pages.length,
       sourceSummary: {
         pages: inferredSource.pages,
