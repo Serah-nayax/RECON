@@ -60,6 +60,18 @@ export interface MapsLead {
    * searched / probable (a bar, an escape room...) / unrelated (a shop, a clinic...: not listed).
    */
   relevance?: "match" | "other" | "offTopic";
+  /** Already a Tigapo location (from the Tigapo exports on the server), or null. */
+  tigapo?: TigapoMatch | null;
+}
+
+export interface TigapoMatch {
+  name: string;
+  operator: string | null;
+  /** false: closed or disabled in Tigapo (a former customer). */
+  active: boolean;
+  distanceM: number;
+  /** "name": close and same name; "address": at the same spot, names differ; "maybe": same name up to 1.5 km away. */
+  how: "name" | "address" | "maybe";
 }
 
 export interface GridCell {

@@ -25,6 +25,8 @@ After pulling new code: `start-recon.cmd rebuild`.
 
 Advanced: `MAPS_CONCURRENCY`, `QUALIFY_CONCURRENCY`, `MAPS_PROXY_URL`, `LOG_LEVEL`.
 
+**Tigapo locations:** put the Tigapo exports in `data/tigapo/` (`Locations.xlsx`, `Customers.xlsx`, `Locations*.csv`). This folder is never committed. A new export is picked up without a restart.
+
 ## Without the launcher
 
 ```bash

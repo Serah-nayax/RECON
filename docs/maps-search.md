@@ -25,4 +25,5 @@ Every place found is stored. The list hides only places clearly unrelated to the
 
 - **Excel / CSV:** download the list.
 - **Qualify All:** asks which ICP to use, then sends the list to the Lead Qualifier.
+- **Tigapo** badge: the place is already a Tigapo location (close by and same name). **Tigapo?** means same name but up to 1.5 km away, **Tigapo address?** means same spot but another name: worth a check. Nothing is hidden, and the Excel has a Tigapo column.
 - Past searches stay on the page, with how long they took.

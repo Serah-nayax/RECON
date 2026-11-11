@@ -24,6 +24,7 @@ import { localiseTerms, termSynonyms } from "../lib/maps/translateTerms.js";
 import { type PlaceRelevance } from "../lib/maps/searchProfile.js";
 import { relevanceOf, relevanceTerms } from "../lib/maps/relevance.js";
 import { MAX_JOB_CELLS, startMapsJob } from "../lib/maps/mapsJobRunner.js";
+import { findTigapoLocation } from "../lib/tigapoLocations.js";
 
 const router: IRouter = Router();
 
@@ -245,7 +246,8 @@ router.get("/maps/:jobId", (req, res) => {
     res.status(404).json({ error: "Maps job not found" });
     return;
   }
-  const results = withRelevance(job);
+  // Each place also says whether it is already a Tigapo location (see tigapoLocations.ts).
+  const results = withRelevance(job).map((lead) => ({ ...lead, tigapo: findTigapoLocation(lead) }));
   const shownIds = new Set(results.filter((lead) => lead.relevance !== "offTopic").map((lead) => lead.id));
   res.json({ ...job, results, termYield: termYield(job, (lead) => shownIds.has(lead.id)) });
 });
