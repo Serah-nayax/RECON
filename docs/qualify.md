@@ -23,6 +23,8 @@ For leads worth contacting, the AI also writes sales notes: pitch angle, opening
 
 The Excel file holds score, verdict, venue type, estimated machines, payment system, competitor, contacts and sales notes.
 
+Leads that are already Tigapo locations get the same **Tigapo** badge as on Maps Search, and the Excel has a Tigapo column. Leads from Maps are matched by position; leads from a list by city, name and street address.
+
 ## ICPs
 
 An ICP describes the customers you want: who they are, what makes a good lead, what rules one out. One ICP is active at a time for the whole team. It is used by the Qualifier and suggests its search terms on the Maps page. Each ICP's search terms can be changed on the ICP page.

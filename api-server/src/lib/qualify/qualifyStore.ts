@@ -82,6 +82,9 @@ export interface LeadInput {
   city?: string;
   country?: string;
   notes?: string;
+  /** GPS of a lead from a Maps search: tells whether it is already a Tigapo location. */
+  lat?: number;
+  lng?: number;
 }
 
 export interface SourceSummary {

@@ -1,5 +1,6 @@
 import ExcelJS from "exceljs";
 import type { QualifyBatch, LeadResult } from "./qualifyApi";
+import { tigapoText } from "@/components/TigapoBadge";
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 const C = {
@@ -64,27 +65,28 @@ function pct(n: number, total: number) {
 type ColDef = { key: string; header: string; width: number; wrap?: true };
 
 const COLS: ColDef[] = [
-  // ── Group 1: LEAD IDENTITY (A–E) ──────────────────────────────────────────
+  // ── Group 1: LEAD IDENTITY ──────────────────────────────────────────
   { key: "name",             header: "Company Name",        width: 28 },
   { key: "website",          header: "Website",             width: 32 },
   { key: "category",         header: "Category",            width: 18 },
   { key: "city",             header: "City",                width: 16 },
   { key: "country",          header: "Country",             width: 14 },
-  // ── Group 2: QUALIFICATION (F–I) ──────────────────────────────────────────
+  { key: "tigapo",           header: "Tigapo",              width: 36, wrap: true },
+  // ── Group 2: QUALIFICATION ──────────────────────────────────────────
   { key: "score",            header: "ICP Score (0–100)",   width: 14 },
   { key: "scoreBand",        header: "Band",                width: 14 },
   { key: "verdict",          header: "Verdict",             width: 14 },
   { key: "icpNotes",         header: "Analyst Notes",       width: 52, wrap: true },
-  // ── Group 3: SIGNALS & PAIN POINTS (J–L) ─────────────────────────────────
+  // ── Group 3: SIGNALS & PAIN POINTS ─────────────────────────────────
   { key: "keySignals",       header: "Signals Found",       width: 40, wrap: true },
   { key: "missingSignals",   header: "Gaps / Missing",      width: 40, wrap: true },
   { key: "painPoints",       header: "Pain Points",         width: 40, wrap: true },
-  // ── Group 4: OUTREACH INTEL (M–P) ─────────────────────────────────────────
+  // ── Group 4: OUTREACH INTEL ─────────────────────────────────────────
   { key: "pitchAngle",       header: "Pitch Angle",         width: 52, wrap: true },
   { key: "openingHook",      header: "Opening Hook",        width: 52, wrap: true },
   { key: "competitorSystem", header: "Competitor System",   width: 22 },
   { key: "decisionMakers",   header: "Decision Makers",     width: 40, wrap: true },
-  // ── Group 5: VENUE PROFILE (Q–X) ──────────────────────────────────────────
+  // ── Group 5: VENUE PROFILE ──────────────────────────────────────────
   { key: "machineCount",     header: "Machines (est.)",     width: 16 },
   { key: "paymentSystem",    header: "Payment System",      width: 22 },
   { key: "venueType",        header: "Venue Type (AI)",     width: 22 },
@@ -93,7 +95,7 @@ const COLS: ColDef[] = [
   { key: "hasFnB",           header: "F&B",                 width: 10 },
   { key: "hasPartyRooms",    header: "Party Rooms",         width: 14 },
   { key: "isChain",          header: "Chain",               width: 18 },
-  // ── Group 6: METADATA (Y–AE) ──────────────────────────────────────────────
+  // ── Group 6: METADATA ──────────────────────────────────────────────
   { key: "nextAction",       header: "Recommended Action",  width: 44, wrap: true },
   { key: "reviewPlatforms",  header: "Review Platforms",    width: 24 },
   { key: "socialProfiles",   header: "Social Profiles",     width: 24 },
@@ -105,12 +107,12 @@ const COLS: ColDef[] = [
 
 // ── Column groups: [label, startCol (1-indexed), endCol, palette] ─────────────
 const GROUPS: { label: string; start: number; end: number; palette: typeof C.g1 }[] = [
-  { label: "LEAD IDENTITY",         start:  1, end:  5, palette: C.g1 },
-  { label: "QUALIFICATION",         start:  6, end:  9, palette: C.g2 },
-  { label: "SIGNALS & PAIN POINTS", start: 10, end: 12, palette: C.g3 },
-  { label: "OUTREACH INTEL",        start: 13, end: 16, palette: C.g4 },
-  { label: "VENUE PROFILE",         start: 17, end: 24, palette: C.g5 },
-  { label: "METADATA",              start: 25, end: 31, palette: C.g6 },
+  { label: "LEAD IDENTITY",         start:  1, end:  6, palette: C.g1 },
+  { label: "QUALIFICATION",         start:  7, end: 10, palette: C.g2 },
+  { label: "SIGNALS & PAIN POINTS", start: 11, end: 13, palette: C.g3 },
+  { label: "OUTREACH INTEL",        start: 14, end: 17, palette: C.g4 },
+  { label: "VENUE PROFILE",         start: 18, end: 25, palette: C.g5 },
+  { label: "METADATA",              start: 26, end: 32, palette: C.g6 },
 ];
 
 function colLetter(n: number): string {
@@ -195,6 +197,7 @@ export async function exportXlsx(batch: QualifyBatch) {
       category:         lead.input.category    ?? "",
       city:             lead.input.city        ?? "",
       country:          lead.input.country     ?? "",
+      tigapo:           lead.tigapo ? tigapoText(lead.tigapo) : "",
       score:            lead.score             ?? "",
       scoreBand:        scoreBand(lead.score),
       verdict:          lead.verdict           ?? (lead.status === "failed" ? "FAILED" : "—"),

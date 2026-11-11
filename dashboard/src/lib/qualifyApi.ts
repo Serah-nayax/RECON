@@ -1,4 +1,5 @@
 import { getCrawlerApiKey } from "./crawlerAuth";
+import type { TigapoMatch } from "./mapsApi";
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(path, {
@@ -155,6 +156,8 @@ export interface LeadResult {
   startedAt: string | null;
   completedAt: string | null;
   aiUsage?: AiUsage | null;
+  /** The Tigapo location this lead already is, if any (only a flag). */
+  tigapo?: TigapoMatch | null;
 }
 
 export interface AiUsage {

@@ -14,9 +14,9 @@ import {
   type GridCell,
   type AreaInput,
   type AreaSuggestion,
-  type TigapoMatch,
 } from "@/lib/mapsApi";
 import { MapGridPicker } from "@/components/MapGridPicker";
+import { TigapoBadge, tigapoText } from "@/components/TigapoBadge";
 import { QualifyIcpDialog } from "@/components/QualifyIcpDialog";
 import { icpApi } from "@/lib/qualifyApi";
 import { icpSearchTerms } from "@/lib/icpTerms";
@@ -134,14 +134,6 @@ function StatusBadge({ status }: { status: MapsJob["status"] }) {
       {v.label}
     </span>
   );
-}
-
-/** What a Tigapo match says, in words (badge tooltip and export column). */
-function tigapoText(t: TigapoMatch): string {
-  const where = `${t.name}${t.operator && t.operator !== t.name ? ` (${t.operator})` : ""}`;
-  if (t.how === "maybe") return `Maybe ${t.active ? "Tigapo customer" : "former Tigapo customer"} ${where}, ${(t.distanceM / 1000).toFixed(1)} km away`;
-  if (t.how === "address") return `Same address as Tigapo location ${where}${t.active ? "" : ", closed"}`;
-  return `${t.active ? "Tigapo customer" : "Former Tigapo customer"}: ${where}`;
 }
 
 /** Columns of an export: the name, the fields picked for the search, and the match group. */
@@ -326,18 +318,7 @@ function LeadsTable({
                         </span>
                       )}
                       <span className="truncate">{lead.name}</span>
-                      {lead.tigapo && (
-                        <span
-                          title={`${tigapoText(lead.tigapo)} (${lead.tigapo.distanceM} m away)`}
-                          className={`shrink-0 inline-flex px-1.5 py-0.5 rounded text-xs font-medium border ${
-                            lead.tigapo.active && lead.tigapo.how === "name"
-                              ? "text-violet-200 bg-violet-500/15 border-violet-400/30"
-                              : "text-muted-foreground bg-white/5 border-white/10"
-                          }`}
-                        >
-                          {lead.tigapo.how === "maybe" ? "Tigapo?" : lead.tigapo.how === "address" ? "Tigapo address?" : lead.tigapo.active ? "Tigapo" : "Ex-Tigapo"}
-                        </span>
-                      )}
+                      {lead.tigapo && <TigapoBadge match={lead.tigapo} />}
                     </div>
                   </td>
                   {cols.map((f) => (

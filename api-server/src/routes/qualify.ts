@@ -8,6 +8,7 @@ import type { LeadInput } from "../lib/qualify/qualifyStore.js";
 import { canonicalizeLeadUrl } from "../lib/qualify/leadIdentity.js";
 import { summarizeByMonth, summarizeUsage } from "../lib/qualify/aiUsage.js";
 import { listMapsJobs } from "../lib/maps/mapsStore.js";
+import { findTigapoLocation } from "../lib/tigapoLocations.js";
 import type { QualifyBatch } from "../lib/qualify/qualifyStore.js";
 
 /**
@@ -85,6 +86,8 @@ router.post("/qualify", (req, res) => {
       city: l.city ? String(l.city) : undefined,
       country: l.country ? String(l.country) : undefined,
       notes: l.notes ? String(l.notes) : undefined,
+      lat: typeof l.lat === "number" && Number.isFinite(l.lat) ? l.lat : undefined,
+      lng: typeof l.lng === "number" && Number.isFinite(l.lng) ? l.lng : undefined,
     });
   }
   if (leads.length === 0) {
@@ -143,7 +146,12 @@ router.get("/qualify/:batchId", (req, res) => {
     res.status(404).json({ error: "Batch not found" });
     return;
   }
-  res.json({ ...batch, usage: summarizeUsage(batch.leads) });
+  // Each lead also says whether it is already a Tigapo location (see tigapoLocations.ts).
+  const leads = batch.leads.map((lead) => ({
+    ...lead,
+    tigapo: findTigapoLocation({ name: lead.input.name, lat: lead.input.lat, lng: lead.input.lng, city: lead.input.city }),
+  }));
+  res.json({ ...batch, leads, usage: summarizeUsage(batch.leads) });
 });
 
 router.post("/qualify/:batchId/stop", (req, res) => {

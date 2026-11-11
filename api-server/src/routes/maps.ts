@@ -275,6 +275,8 @@ function toQualifyInput(lead: MapsLead) {
     category: lead.category,
     city: lead.address,
     notes: notes || undefined,
+    lat: lead.lat,
+    lng: lead.lng,
   };
 }
 

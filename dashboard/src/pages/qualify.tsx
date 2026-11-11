@@ -7,6 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { qualifyApi, icpApi, crmApi, type LeadInput, type QualifyBatch, type LeadResult, type CrmTarget } from "@/lib/qualifyApi";
 import { exportXlsx } from "@/lib/exportXlsx";
 import { QualificationHistory } from "@/components/QualificationHistory";
+import { TigapoBadge } from "@/components/TigapoBadge";
 import { QualifyIcpDialog } from "@/components/QualifyIcpDialog";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -997,7 +998,7 @@ function LeadRow({
           <div className="flex items-center gap-2">
             <StatusIcon status={lead.status} error={lead.error} />
             <div className="min-w-0">
-              <p className="font-medium text-sm">{lead.input.name}</p>
+              <p className="font-medium text-sm flex items-center gap-2">{lead.input.name}{lead.tigapo && <TigapoBadge match={lead.tigapo} />}</p>
               {lead.input.url && (
                 <a href={lead.input.url} target="_blank" rel="noopener noreferrer"
                   className="text-xs text-muted-foreground hover:text-primary truncate block max-w-[220px]"

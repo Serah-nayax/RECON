@@ -69,7 +69,7 @@ export interface TigapoMatch {
   operator: string | null;
   /** false: closed or disabled in Tigapo (a former customer). */
   active: boolean;
-  distanceM: number;
+  distanceM: number | null;
   /** "name": close and same name; "address": at the same spot, names differ; "maybe": same name up to 1.5 km away. */
   how: "name" | "address" | "maybe";
 }
