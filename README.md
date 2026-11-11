@@ -1,60 +1,44 @@
-<div align="center">
-
 # RECON
 
-### Find the venues. Keep the ones that fit.
-
-**Search Google Maps for every business of a kind in any area, then score each one against your ideal customer profile.**
-
-![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
-![React](https://img.shields.io/badge/React-20232A?logo=react&logoColor=61DAFB)
-![Node.js](https://img.shields.io/badge/Node.js-339933?logo=nodedotjs&logoColor=white)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white)
-![Playwright](https://img.shields.io/badge/Playwright-2EAD33?logo=playwright&logoColor=white)
-
-</div>
-
----
+**Find every venue of a kind in an area on Google Maps, then score each one against your ideal customer profile (ICP).**
 
 ## What it does
 
-1. **ICP.** Choose who you are looking for: pick an ideal customer profile or write one.
-2. **Maps Search.** Type what you are looking for and pick an area. RECON searches Google Maps across the whole area and lists every place it finds.
-3. **Lead Qualifier.** Send the places found, or upload a list. RECON reads each website and scores the lead 0–100 against the active ICP, with a verdict and the evidence behind it.
-4. **History and export.** Download the results as Excel or CSV once a batch is finished; with HubSpot or Salesforce connected in Settings, qualified leads can be pushed there.
+1. **ICP.** Pick the customer profile you are looking for. Four Tigapo ICPs are ready: FEC & large arcades, Barcades, Street Route, Operators & multi-site.
+2. **Maps search.** RECON scans Google Maps square by square across the area, so no place is missed, and collects every result: name, address, website, phone, rating, category. Each search term is also searched in the country's language.
+3. **Qualification.** The AI (Claude Haiku) reads each place's website and Maps info, like a sales rep doing research, and gives a score from 0 to 100 with a verdict: QUALIFY, BORDERLINE or DISQUALIFY.
+4. **Excel export for sales.** Score, verdict, venue type, estimated machines, payment system, competitor, contacts.
 
 ## Quick start (Windows)
 
-You need [Node.js](https://nodejs.org) 20+, `pnpm` (`npm i -g pnpm`), [Git for Windows](https://git-scm.com) and a PostgreSQL database.
+You need [Node.js](https://nodejs.org) 20+, `pnpm` (`npm i -g pnpm`) and [Git for Windows](https://git-scm.com).
 
-1. Put the database URL in `.env.local` at the repo root: `DATABASE_URL=postgres://...`
-2. Double-click **`start-recon.cmd`**. It opens RECON on `http://localhost:8080`.
+1. Create `.env.local` at the repo root with `DATABASE_URL=postgres://...`
+2. Double-click **`start-recon.cmd`**. RECON opens on `http://localhost:8080`.
 
-After pulling new code, run `start-recon.cmd rebuild`.
+After pulling new code: `start-recon.cmd rebuild`.
+
+## Cost
+
+- Google Maps: $0 (RECON reads the public pages, no paid API).
+- Database: Neon free plan.
+- AI: about $2 per 1,000 leads.
+
+## Limits
+
+- Machine count and payment system are rarely shown on websites, so they are often estimated.
+- Reading Google Maps automatically goes against Google's terms of use. Google could block it or show captchas (none so far). The fallback is Google's official API, which is paid.
+- Neon free plan: 5 GB of data transfer a month. RECON stays well below it, but watch it with more users.
 
 ## Documentation
 
-| Guide | Content |
-|---|---|
-| [Setup](docs/setup.md) | Install, configuration, troubleshooting |
-| [Maps search](docs/maps-search.md) | Running a search and reading the results |
-| [Qualify and ICPs](docs/qualify.md) | Scoring leads and managing ICPs |
-| [Architecture](docs/architecture.md) | Code layout and database |
-
-## Project structure
-
-```
-RECON/
-├── api-server/          API, Maps and Qualify engines (also serves the dashboard)
-├── dashboard/           Web app (React + Vite)
-├── lib/db/              Database schema (Drizzle, PostgreSQL)
-├── scripts/             Maintenance scripts
-├── docs/                Guides
-└── start-recon.cmd      Windows launcher
-```
+- [Setup](docs/setup.md): install, configuration, troubleshooting
+- [Maps search](docs/maps-search.md)
+- [Qualification and ICPs](docs/qualify.md)
+- [Architecture](docs/architecture.md): code layout and database
 
 ## License
 
-RECON is built on an open-source project by Salomon Sverdlov, under the [PolyForm Noncommercial License 1.0.0](LICENSE.md). Commercial use needs a commercial license: see [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md).
+Built on an open-source project by Salomon Sverdlov, under the [PolyForm Noncommercial License 1.0.0](LICENSE.md). Commercial use needs a commercial license: see [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md).
 
 Area data: [GeoNames](https://www.geonames.org) (CC BY 4.0) and [OpenStreetMap](https://www.openstreetmap.org/copyright) (ODbL).
