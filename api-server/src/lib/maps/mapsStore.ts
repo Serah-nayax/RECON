@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { db, mapsJobs } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "../logger.js";
+import { loadRowsCached } from "../dbRowCache.js";
 import type { GridCell, MapsScope } from "./geoGrid.js";
 import type { MapsField, MapsLead } from "./googleMapsCrawler.js";
 
@@ -133,7 +134,9 @@ async function persistJob(job: MapsJob): Promise<void> {
 
 export async function initMapsStore(): Promise<void> {
   try {
-    const rows = await db.select().from(mapsJobs);
+    const rows = await loadRowsCached<typeof mapsJobs.$inferSelect>(
+      mapsJobs, "maps_jobs", mapsJobs.jobId, "jobId", ["createdAt", "updatedAt"],
+    );
     for (const row of rows) {
       const cells = (row.cells as unknown as GridCell[]) ?? [];
 

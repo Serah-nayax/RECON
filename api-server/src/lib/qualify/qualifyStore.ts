@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { db, qualifyBatches } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { logger } from "../logger.js";
+import { loadRowsCached } from "../dbRowCache.js";
 import type { AiUsage } from "./aiUsage.js";
 
 // Review and competitor analyses: made by an earlier version of the qualifier.
@@ -350,7 +351,9 @@ export function takeInterruptedBatchIds(): string[] {
 
 export async function initQualifyStore(): Promise<void> {
   try {
-    const rows = await db.select().from(qualifyBatches);
+    const rows = await loadRowsCached<typeof qualifyBatches.$inferSelect>(
+      qualifyBatches, "qualify_batches", qualifyBatches.batchId, "batchId", ["createdAt", "updatedAt"],
+    );
     for (const row of rows) {
       const leads = row.leads as unknown as LeadResult[];
       // Batches stopped before the "cancelled" status existed were saved as "failed".

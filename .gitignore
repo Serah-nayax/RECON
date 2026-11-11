@@ -9,3 +9,4 @@ dist/
 
 # Tigapo customer exports: company data, never commit
 data/tigapo/
+.db-cache/
