@@ -7,7 +7,7 @@ The Lead Qualifier scores each lead against the **active ICP**. Before a batch s
 - **From Maps:** *Qualify All* on a search.
 - **From a list:** upload a CSV or Excel file (a name, ideally a website), or paste a list.
 
-There is no limit on the number of leads. A batch can be stopped and retried, and resumes on its own after a restart. Past batches are in **History**.
+There is no limit on the number of leads. A batch can be stopped and retried, and resumes on its own after a restart. Past batches are listed under the form, on the same page: open one to review its leads and download them.
 
 ## How a lead is scored
 

@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Logo } from "@/components/logo";
 import { Link } from "wouter";
 import { format } from "date-fns";
-import { Map, ListChecks, History, BookOpen, ArrowRight, Loader2, MapPin, Target, Sparkles, Search } from "lucide-react";
+import { Map, ListChecks, BookOpen, ArrowRight, Loader2, MapPin, Target, Sparkles, Search } from "lucide-react";
 import { mapsApi } from "@/lib/mapsApi";
 import { icpApi, qualifyApi } from "@/lib/qualifyApi";
 import { Card } from "@/components/ui/card";
@@ -30,16 +30,8 @@ const STEPS = [
     href: "/qualify",
     icon: ListChecks,
     title: "Lead Qualifier",
-    text: "Score the places of a search, or a CSV or Excel list: 0 to 100, a verdict and the reasons.",
+    text: "Score the places of a search, or a CSV or Excel list: 0 to 100, a verdict and the reasons. Past qualifications stay on the page, ready to download.",
     action: "Qualify leads",
-  },
-  {
-    step: 4,
-    href: "/history",
-    icon: History,
-    title: "History",
-    text: "Every qualification, kept. Review the leads and download them as Excel or CSV.",
-    action: "See results",
   },
 ];
 
@@ -127,7 +119,7 @@ export default function Home() {
         })}
       </section>
 
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {STEPS.map((s) => {
           const Icon = s.icon;
           const style = stepStyle(s.step);
@@ -187,7 +179,7 @@ export default function Home() {
         <Card className="p-5">
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-semibold">Recent qualifications</h3>
-            <Link href="/history" className="text-xs text-muted-foreground hover:text-foreground">History</Link>
+            <Link href="/qualify" className="text-xs text-muted-foreground hover:text-foreground">All qualifications</Link>
           </div>
           {recentBatches.length === 0 ? (
             <p className="text-sm text-muted-foreground py-4">No qualification yet.</p>

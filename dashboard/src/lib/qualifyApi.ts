@@ -180,7 +180,7 @@ export interface UsageSummary {
   unpricedModels: string[];
 }
 
-/** A batch in the History list: no leads, but where they come from and how they were scored. */
+/** A batch in the past qualifications list: no leads, but where they come from and how they were scored. */
 export interface BatchSummary extends Omit<QualifyBatch, "leads"> {
   /** The Maps search the leads were found by ("arcade · Santa Rosa"), null for an uploaded list. */
   source: string | null;

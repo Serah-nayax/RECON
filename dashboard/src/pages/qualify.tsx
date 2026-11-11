@@ -6,6 +6,7 @@ import * as XLSX from "xlsx";
 import { useToast } from "@/hooks/use-toast";
 import { qualifyApi, icpApi, crmApi, type LeadInput, type QualifyBatch, type LeadResult, type CrmTarget } from "@/lib/qualifyApi";
 import { exportXlsx } from "@/lib/exportXlsx";
+import { QualificationHistory } from "@/components/QualificationHistory";
 import { QualifyIcpDialog } from "@/components/QualifyIcpDialog";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -1469,6 +1470,17 @@ export function Qualify() {
           </Card>
       )}
 
+      {/* Past qualifications, under the form like "Your searches" on Maps Search. */}
+      {!activeBatchId && (
+        <QualificationHistory
+          onOpen={(id) => {
+            setActiveBatchId(id);
+            window.history.replaceState(null, "", `${window.location.pathname}?batch=${id}`);
+            window.scrollTo({ top: 0 });
+          }}
+        />
+      )}
+
       {/* Results */}
       {activeBatchId && batch && (
         <div className="space-y-4">
@@ -1584,7 +1596,7 @@ export function Qualify() {
                     size="sm"
                     variant="ghost"
                     className="font-mono text-xs text-muted-foreground"
-                    onClick={() => { setActiveBatchId(null); setLeads([]); setParsed(null); setBulkPushStatus("idle"); setVerdictTab("ALL"); setElapsedSeconds(0); }}
+                    onClick={() => { setActiveBatchId(null); window.history.replaceState(null, "", window.location.pathname); setLeads([]); setParsed(null); setBulkPushStatus("idle"); setVerdictTab("ALL"); setElapsedSeconds(0); }}
                   >
                     <PlusCircle className="h-3 w-3 mr-1" /> New batch
                   </Button>

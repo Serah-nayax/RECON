@@ -11,9 +11,9 @@ import { listMapsJobs } from "../lib/maps/mapsStore.js";
 import type { QualifyBatch } from "../lib/qualify/qualifyStore.js";
 
 /**
- * Where a batch's leads come from, for the History list: the Maps search they were found by
+ * Where a batch's leads come from, for the past qualifications list: the Maps search they were found by
  * ("arcade · Santa Rosa"), matched by name and address since a batch does not store its search.
- * A batch from an uploaded or pasted list gets null (the History shows its first lead names).
+ * A batch from an uploaded or pasted list gets null (the list shows its first lead names).
  */
 function sourceIndex(): Map<string, string> {
   const index = new Map<string, string>();

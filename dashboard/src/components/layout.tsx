@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Settings, AlertTriangle, History, Map, ListChecks, BookOpen } from "lucide-react";
+import { Settings, AlertTriangle, Map, ListChecks, BookOpen } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Logo } from "@/components/logo";
 import { HelpModal } from "@/components/help-modal";
@@ -28,12 +28,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
     };
   }, [location]);
 
-  // The work in order: who we look for, find, qualify, results. Settings apart.
+  // The work in order: who we look for, find, qualify (past qualifications are on that page). Settings apart.
   const mainLinks = [
     { href: "/icp", label: "ICP", icon: BookOpen, step: 1 },
     { href: "/maps", label: "Maps Search", icon: Map, step: 2 },
     { href: "/qualify", label: "Lead Qualifier", icon: ListChecks, step: 3 },
-    { href: "/history", label: "History", icon: History, step: 4 },
   ];
   const sideLinks = [{ href: "/settings", label: "Settings", icon: Settings }];
   const linkClass = (href: string) =>

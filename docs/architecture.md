@@ -4,7 +4,7 @@ RECON is one program that runs on a PC (or a server) and opens in the browser.
 
 ## The parts
 
-- **The web app** (`dashboard/`): the pages the team uses (ICP, Maps Search, Lead Qualifier, History, Settings).
+- **The web app** (`dashboard/`): the pages the team uses (ICP, Maps Search, Lead Qualifier, Settings).
 - **The engine** (`api-server/`): does the work behind the pages.
   - It opens Google Maps in a hidden browser and reads the results, like a person would.
   - It visits each lead's website and reads the useful pages.

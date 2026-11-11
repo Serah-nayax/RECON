@@ -1,4 +1,4 @@
-import { Switch, Route, Router as WouterRouter } from "wouter";
+import { Switch, Route, Redirect, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -6,7 +6,6 @@ import NotFound from "@/pages/not-found";
 import Home from "@/pages/home";
 import { IcpSettings } from "@/pages/icp";
 import { Qualify } from "@/pages/qualify";
-import History from "@/pages/history";
 import Settings from "@/pages/settings";
 import { MapsSearch } from "@/pages/maps";
 import { Layout } from "@/components/layout";
@@ -21,7 +20,8 @@ function Router() {
         <Route path="/icp" component={IcpSettings} />
         <Route path="/qualify" component={Qualify} />
         <Route path="/maps" component={MapsSearch} />
-        <Route path="/history" component={History} />
+        {/* History now sits under the Lead Qualifier; old links still work. */}
+        <Route path="/history"><Redirect to="/qualify" replace /></Route>
         <Route path="/settings" component={Settings} />
         <Route component={NotFound} />
       </Switch>

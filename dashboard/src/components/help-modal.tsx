@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { HelpCircle, Map, ListChecks, History, Settings, BookOpen, Layers, FileSpreadsheet, Brain } from "lucide-react";
+import { HelpCircle, Map, ListChecks, Settings, BookOpen, Layers, Brain } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -42,18 +42,7 @@ const steps = [
     color: "text-emerald-400",
     bg: "bg-emerald-400/10",
     description:
-      "Send the places of a search, or upload a CSV or Excel list. RECON reads each website and scores the lead from 0 to 100 against the active ICP, with a verdict and the reasons.",
-  },
-  {
-    step: 4,
-    label: "Review and export",
-    page: "History",
-    href: "/history",
-    icon: FileSpreadsheet,
-    color: "text-amber-400",
-    bg: "bg-amber-400/10",
-    description:
-      "Open a qualification to review its leads, then download them as Excel or CSV, or push them to HubSpot or Salesforce.",
+      "Send the places of a search, or upload a CSV or Excel list. RECON reads each website and scores the lead from 0 to 100 against the active ICP, with a verdict and the reasons. Past qualifications are listed below: open one to review its leads and download them as Excel or CSV.",
   },
 ];
 
@@ -77,14 +66,7 @@ const pages = [
     label: "Lead Qualifier",
     color: "text-emerald-400",
     bg: "bg-emerald-400/10",
-    description: "Score leads from a Maps search, a CSV or Excel file, or a pasted list. Each lead gets a score and a verdict: Qualify, Borderline or Disqualify.",
-  },
-  {
-    icon: History,
-    label: "History",
-    color: "text-orange-400",
-    bg: "bg-orange-400/10",
-    description: "Browse past qualification batches and re-export them at any time.",
+    description: "Score leads from a Maps search, a CSV or Excel file, or a pasted list. Each lead gets a score and a verdict: Qualify, Borderline or Disqualify. Past qualifications are listed below, to reopen and download.",
   },
   {
     icon: Settings,
