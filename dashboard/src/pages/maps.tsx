@@ -17,7 +17,8 @@ import {
 } from "@/lib/mapsApi";
 import { MapGridPicker } from "@/components/MapGridPicker";
 import { QualifyIcpDialog } from "@/components/QualifyIcpDialog";
-import { icpApi, type IcpConfig } from "@/lib/qualifyApi";
+import { icpApi } from "@/lib/qualifyApi";
+import { icpSearchTerms } from "@/lib/icpTerms";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -255,30 +256,6 @@ function renderCell(field: MapsField, lead: MapsLead) {
     default:
       return null;
   }
-}
-
-function extractIcpSearchTerms(icp: IcpConfig): string[] {
-  const text = [icp.description, ...icp.qualifySignals].join(" ");
-  const patterns: [RegExp, string][] = [
-    [/\bFEC[s]?\b|family entertainment center/i, "family entertainment center"],
-    [/\barcade[s]?\b/i, "arcade"],
-    [/\bbarcade[s]?\b/i, "barcade"],
-    [/\bbeercade[s]?\b/i, "beercade"],
-    [/\bbowling/i, "bowling alley"],
-    [/\blaser.?tag/i, "laser tag"],
-    [/\bgo.kart/i, "go-kart track"],
-    [/\bescape.?room/i, "escape room"],
-    [/\btrampoline/i, "trampoline park"],
-    [/\bgame.?room/i, "game room"],
-    [/\bentertainment.?restaurant|entertainment dining/i, "entertainment restaurant"],
-    [/\bpinball/i, "pinball arcade"],
-    [/\bamusement/i, "amusement center"],
-  ];
-  const terms: string[] = [];
-  for (const [regex, term] of patterns) {
-    if (regex.test(text) && !terms.includes(term)) terms.push(term);
-  }
-  return terms.slice(0, 7);
 }
 
 /** The best-known places (most reviews) first. */
@@ -798,6 +775,7 @@ export function MapsSearch() {
   const [areaInput, setAreaInput] = useState("");
   const areaInputRef = useRef<HTMLInputElement>(null);
   const [suggestions, setSuggestions] = useState<AreaSuggestion[]>([]);
+  const [showAllSearches, setShowAllSearches] = useState(false);
   const [highlighted, setHighlighted] = useState(-1);
   /** OpenStreetMap is being asked for more areas (districts, small towns). */
   const [moreLoading, setMoreLoading] = useState(false);
@@ -1096,10 +1074,10 @@ export function MapsSearch() {
               </div>
 
               {/* ICP suggestions */}
-              {activeIcp && extractIcpSearchTerms(activeIcp).length > 0 && (
+              {activeIcp && icpSearchTerms(activeIcp).length > 0 && (
                 <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
                   <span className="text-xs text-muted-foreground">Suggestions:</span>
-                  {extractIcpSearchTerms(activeIcp).map((term) => (
+                  {icpSearchTerms(activeIcp).map((term) => (
                     <button
                       key={term}
                       type="button"
@@ -1328,7 +1306,7 @@ export function MapsSearch() {
           </CardHeader>
           <CardContent className="pb-3">
             <ul className="divide-y divide-border">
-              {jobsData.jobs.slice(0, 8).map((job) => (
+              {(showAllSearches ? jobsData.jobs : jobsData.jobs.slice(0, 8)).map((job) => (
                 <li key={job.jobId}>
                   <button
                     onClick={() => setActiveJobId(job.jobId)}
@@ -1352,6 +1330,11 @@ export function MapsSearch() {
                 </li>
               ))}
             </ul>
+            {jobsData.jobs.length > 8 && (
+              <Button variant="ghost" size="sm" className="w-full mt-1 text-muted-foreground" onClick={() => setShowAllSearches((v) => !v)}>
+                {showAllSearches ? "Show fewer" : `Show all ${jobsData.jobs.length} searches`}
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}

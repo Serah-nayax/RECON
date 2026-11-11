@@ -23,6 +23,8 @@ export interface IcpConfig {
   systemPrompt: string;
   qualifySignals: string[];
   disqualifySignals: string[];
+  /** Terms offered on the Maps page; null or missing: guessed from the description. */
+  searchTerms?: string[] | null;
   scoreBands: { band: string; range: string; description: string }[];
   isActive: boolean;
   createdAt: string;

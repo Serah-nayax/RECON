@@ -7,6 +7,8 @@ export const icpConfig = pgTable("icp_config", {
   systemPrompt: text("system_prompt").notNull(),
   qualifySignals: jsonb("qualify_signals").notNull().$type<string[]>(),
   disqualifySignals: jsonb("disqualify_signals").notNull().$type<string[]>(),
+  // Terms offered on the Maps page for this ICP; null = derived from the description.
+  searchTerms: jsonb("search_terms").$type<string[]>(),
   scoreBands: jsonb("score_bands").notNull().$type<{ band: string; range: string; description: string }[]>(),
   isActive: boolean("is_active").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull(),

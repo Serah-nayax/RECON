@@ -1,5 +1,5 @@
 import { db, icpConfig } from "@workspace/db";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { logger } from "./logger.js";
 
@@ -10,6 +10,8 @@ export interface IcpConfig {
   systemPrompt: string;
   qualifySignals: string[];
   disqualifySignals: string[];
+  /** Search terms offered on the Maps page. null: not set, the page derives them from the description. */
+  searchTerms?: string[] | null;
   scoreBands: {
     band: string;
     range: string;
@@ -136,6 +138,7 @@ function rowToConfig(row: typeof icpConfig.$inferSelect): IcpConfig {
     qualifySignals: row.qualifySignals as string[],
     disqualifySignals: row.disqualifySignals as string[],
     scoreBands: row.scoreBands as IcpConfig["scoreBands"],
+    searchTerms: (row.searchTerms as string[] | null) ?? null,
     isActive: row.isActive,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -154,6 +157,7 @@ async function persistIcp(config: IcpConfig): Promise<void> {
         qualifySignals: config.qualifySignals,
         disqualifySignals: config.disqualifySignals,
         scoreBands: config.scoreBands,
+        searchTerms: config.searchTerms ?? null,
         isActive: config.isActive,
         createdAt: new Date(config.createdAt),
         updatedAt: new Date(config.updatedAt),
@@ -167,6 +171,7 @@ async function persistIcp(config: IcpConfig): Promise<void> {
           qualifySignals: config.qualifySignals,
           disqualifySignals: config.disqualifySignals,
           scoreBands: config.scoreBands,
+          searchTerms: config.searchTerms ?? null,
           isActive: config.isActive,
           updatedAt: new Date(config.updatedAt),
         },
@@ -181,6 +186,8 @@ async function persistIcp(config: IcpConfig): Promise<void> {
 
 export async function initIcpStore(): Promise<void> {
   try {
+    // Added after the first release: databases created before it get the column here (additive, no data touched).
+    await db.execute(sql`ALTER TABLE icp_config ADD COLUMN IF NOT EXISTS search_terms jsonb`);
     const rows = await db.select().from(icpConfig).orderBy(desc(icpConfig.createdAt));
 
     if (rows.length === 0) {

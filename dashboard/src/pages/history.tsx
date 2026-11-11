@@ -42,6 +42,8 @@ export default function History() {
   });
 
   const [query, setQuery] = useState("");
+  const [showAll, setShowAll] = useState(false);
+  const PAGE = 10;
   const all = batchData?.batches ?? [];
   // Search by place, search term, ICP, lead name or date, all at once.
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
@@ -98,7 +100,7 @@ export default function History() {
               </div>
             ) : (
               <div className="divide-y divide-muted/30">
-                {batches.map((batch) => {
+                {(showAll ? batches : batches.slice(0, PAGE)).map((batch) => {
                   const pct = batch.totalCount > 0
                     ? Math.round((batch.completedCount / batch.totalCount) * 100)
                     : 0;
@@ -139,6 +141,11 @@ export default function History() {
                     </div>
                   );
                 })}
+                {batches.length > PAGE && (
+                  <Button variant="ghost" size="sm" className="w-full mt-1 text-muted-foreground" onClick={() => setShowAll((v) => !v)}>
+                    {showAll ? "Show fewer" : `Show all ${batches.length} qualifications`}
+                  </Button>
+                )}
               </div>
             )}
           </CardContent>

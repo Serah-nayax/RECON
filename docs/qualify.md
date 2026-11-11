@@ -25,7 +25,7 @@ The Excel file holds score, verdict, venue type, estimated machines, payment sys
 
 ## ICPs
 
-An ICP describes the customers you want: who they are, what makes a good lead, what rules one out. One ICP is active at a time for the whole team. It is used by the Qualifier and suggests search terms on the Maps page.
+An ICP describes the customers you want: who they are, what makes a good lead, what rules one out. One ICP is active at a time for the whole team. It is used by the Qualifier and suggests its search terms on the Maps page. Each ICP's search terms can be changed on the ICP page.
 
 ## Cost
 

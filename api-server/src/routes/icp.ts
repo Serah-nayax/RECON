@@ -13,6 +13,23 @@ import {
 
 const router: IRouter = Router();
 
+/** Maps search terms of an ICP: trimmed, no duplicates, at most 20. null means "derive them". */
+function cleanSearchTerms(value: unknown): string[] | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (!Array.isArray(value)) return undefined;
+  const seen = new Set<string>();
+  const terms: string[] = [];
+  for (const v of value) {
+    const t = String(v ?? "").trim().replace(/\s+/g, " ").slice(0, 80);
+    if (t && !seen.has(t.toLowerCase())) {
+      seen.add(t.toLowerCase());
+      terms.push(t);
+    }
+  }
+  return terms.slice(0, 20);
+}
+
 router.use(apiKeyMiddleware);
 
 router.get("/icp", (_req, res) => {
@@ -41,6 +58,7 @@ router.post("/icp", async (req, res) => {
     qualifySignals: body.qualifySignals as string[],
     disqualifySignals: body.disqualifySignals as string[],
     scoreBands: body.scoreBands as { band: string; range: string; description: string }[],
+    searchTerms: cleanSearchTerms(body.searchTerms) ?? null,
   });
   res.status(201).json(icp);
 });
@@ -70,6 +88,8 @@ router.put("/icp/:id", async (req, res) => {
   for (const key of allowed) {
     if (key in body) updates[key] = body[key];
   }
+  const terms = cleanSearchTerms(body.searchTerms);
+  if (terms !== undefined) updates.searchTerms = terms;
 
   const updated = await updateIcpById(req.params.id, updates as Parameters<typeof updateIcpById>[1]);
   if (!updated) {

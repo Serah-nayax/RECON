@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/page-header";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { icpApi, type IcpConfig } from "@/lib/qualifyApi";
+import { icpSearchTerms } from "@/lib/icpTerms";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -85,7 +86,16 @@ function IcpEditor({
     qualifySignals: [...icp.qualifySignals],
     disqualifySignals: [...icp.disqualifySignals],
     scoreBands: icp.scoreBands.map((b) => ({ ...b })),
+    searchTerms: icpSearchTerms(icp),
   });
+  const [termInput, setTermInput] = useState("");
+  const addTerm = (raw: string) => {
+    const term = raw.trim().replace(/\s+/g, " ");
+    setTermInput("");
+    if (!term || form.searchTerms.some((t) => t.toLowerCase() === term.toLowerCase())) return;
+    setForm({ ...form, searchTerms: [...form.searchTerms, term] });
+  };
+  const removeTerm = (term: string) => setForm({ ...form, searchTerms: form.searchTerms.filter((t) => t !== term) });
   const [activeTab, setActiveTab] = useState<EditorTab>("overview");
   const [showDelete, setShowDelete] = useState(false);
   const [showTemplateConfirm, setShowTemplateConfirm] = useState(false);
@@ -221,6 +231,41 @@ function IcpEditor({
                 placeholder="e.g. We sell cashless payment solutions to family entertainment centers with 15+ arcade machines..."
                 className="bg-background/50 border-muted min-h-[140px] resize-none"
               />
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Maps search terms</CardTitle>
+              <CardDescription>
+                Offered as suggestions on the Maps Search page when this ICP is active. Type a term and press Enter to add it.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-muted bg-background/50 px-2 py-2">
+                {form.searchTerms.map((term) => (
+                  <span key={term} className="inline-flex items-center gap-1 rounded bg-primary/15 border border-primary/30 px-2 py-0.5 text-xs font-mono text-primary">
+                    {term}
+                    <button type="button" onClick={() => removeTerm(term)} className="hover:text-destructive" aria-label={`Remove ${term}`}>
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+                <input
+                  value={termInput}
+                  onChange={(e) => setTermInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === ",") {
+                      e.preventDefault();
+                      addTerm(termInput);
+                    } else if (e.key === "Backspace" && !termInput && form.searchTerms.length) {
+                      removeTerm(form.searchTerms[form.searchTerms.length - 1]);
+                    }
+                  }}
+                  onBlur={() => addTerm(termInput)}
+                  placeholder={form.searchTerms.length ? "Add a term…" : "e.g. arcade, bowling alley"}
+                  className="flex-1 min-w-[160px] bg-transparent text-sm placeholder:text-muted-foreground/70 focus:outline-none"
+                />
+              </div>
             </CardContent>
           </Card>
         </div>
