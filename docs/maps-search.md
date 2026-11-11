@@ -12,12 +12,12 @@ Lists every place of a kind in an area, from Google Maps.
 
 RECON cuts the area into squares and searches each one on Google Maps. Google shows at most about 120 results per search, so a busy square can hide places.
 
-- **Step 1** searches every square once. At the end, the list is already usable: **Excel**, **CSV** and **Qualify All** open.
-- **Step 2** takes the busy squares, cuts them into smaller ones and searches them again. That is what takes time in big cities, and it only adds places to the list.
+- **Step 1, quick list:** every square is searched once. The list is ready in a few minutes (Paris: about 2 minutes, around 60% of the final places) and can already be exported or sent to qualification.
+- **Step 2, details:** in busy squares, Google cuts results off. RECON searches these squares again in smaller pieces, and again while they are still full. This takes longer, but finds the places step 1 could not see, including good prospects. It only adds places to the list.
 
 Each term is also searched in the country's language (e.g. "salle d'arcade" in France). Only places inside the area are kept.
 
-The time depends on the size of the area and the number of terms: Paris with one term takes about 7 minutes.
+Total time depends on the size of the area and the number of search terms (Paris: about 7 minutes in total).
 
 ## Results
 

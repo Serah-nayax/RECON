@@ -5,8 +5,8 @@
 ## What it does
 
 1. **ICP.** Pick the customer profile you are looking for. Four Tigapo ICPs are ready: FEC & large arcades, Barcades, Street Route, Operators & multi-site.
-2. **Maps search.** RECON scans Google Maps square by square across the area, so no place is missed, and collects every result: name, address, website, phone, rating, category. Each search term is also searched in the country's language.
-3. **Qualification.** The AI (Claude Haiku) reads each place's website and Maps info, like a sales rep doing research, and gives a score from 0 to 100 with a verdict: QUALIFY, BORDERLINE or DISQUALIFY.
+2. **Maps search.** RECON scans Google Maps square by square across the area, so no place is missed, and collects every result: name, address, website, phone, rating, category. Each search term is also searched in the country's language. A first list is ready in a few minutes, the rest comes after (see [Maps search](docs/maps-search.md)).
+3. **Qualification.** The AI (Claude Haiku) reads each place's website and Maps info, like a sales rep doing research, and gives a score from 0 to 100 with a verdict: QUALIFY, BORDERLINE or DISQUALIFY. No limit on the number of leads, and stable verdicts (2 opinions, plus a 3rd if they disagree).
 4. **Excel export for sales.** Score, verdict, venue type, estimated machines, payment system, competitor, contacts.
 
 ## Quick start (Windows)
@@ -22,23 +22,25 @@ After pulling new code: `start-recon.cmd rebuild`.
 
 - Google Maps: $0 (RECON reads the public pages, no paid API).
 - Database: Neon free plan.
-- AI: about $2 per 1,000 leads.
+- AI: about $2 per 1,000 leads (IT budget: $30 a month).
+
+A hand check in Santa Rosa found about 6 correct verdicts out of 10, and no real arcade was missed: the search collects widely and the qualification filters.
 
 ## Limits
 
 - Machine count and payment system are rarely shown on websites, so they are often estimated.
-- Reading Google Maps automatically goes against Google's terms of use. Google could block it or show captchas (none so far). The fallback is Google's official API, which is paid.
-- Neon free plan: 5 GB of data transfer a month. RECON stays well below it, but watch it with more users.
+- Reading Google Maps automatically goes against Google's terms of use. Google could block it or show captchas (none so far). The fallback is Google's official API: legal but paid, about $10–35 per search on a large city.
+- Neon free plan: 5 GB of data transfer a month; above it, the database pauses until the next month. RECON stays well below it, but watch it with more users.
 
 ## Documentation
 
 - [Setup](docs/setup.md): install, configuration, troubleshooting
 - [Maps search](docs/maps-search.md)
 - [Qualification and ICPs](docs/qualify.md)
-- [Architecture](docs/architecture.md): code layout and database
+- [How RECON is built](docs/architecture.md)
 
 ## License
 
-Built on an open-source project by Salomon Sverdlov, under the [PolyForm Noncommercial License 1.0.0](LICENSE.md). Commercial use needs a commercial license: see [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md).
+RECON started from an open-source project by Salomon Sverdlov and has since been largely rewritten. The original code is under the [PolyForm Noncommercial License 1.0.0](LICENSE.md), which asks to keep his copyright notice; commercial use needs a commercial license (see [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md)).
 
 Area data: [GeoNames](https://www.geonames.org) (CC BY 4.0) and [OpenStreetMap](https://www.openstreetmap.org/copyright) (ODbL).

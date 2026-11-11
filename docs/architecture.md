@@ -1,30 +1,22 @@
-# Architecture
+# How RECON is built
 
-A pnpm workspace in TypeScript. The API also serves the web app, so RECON runs as one process.
+RECON is one program that runs on a PC (or a server) and opens in the browser.
 
-```
-dashboard (React)  ──/api──▶  api-server (Express)  ──▶  PostgreSQL (Neon)
-                                 ├─ Playwright ──▶ Google Maps
-                                 ├─ crawler ──▶ lead websites
-                                 └─ Claude ──▶ lead scoring
-```
+## The parts
 
-| Folder | Content |
+- **The web app** (`dashboard/`): the pages the team uses (ICP, Maps Search, Lead Qualifier, History, Settings).
+- **The engine** (`api-server/`): does the work behind the pages.
+  - It opens Google Maps in a hidden browser and reads the results, like a person would.
+  - It visits each lead's website and reads the useful pages.
+  - It sends what it read to the AI (Claude), which gives the score and verdict.
+- **The database** (Neon, online): keeps the ICPs, every search and every qualification, so the whole team sees the same data.
+
+## Where to look in the code
+
+| To change… | Look in |
 |---|---|
-| `api-server/src/routes/` | HTTP routes: maps, qualify, icp, crm, config, health |
-| `api-server/src/lib/maps/` | Maps search: areas, grid, crawler, relevance, term translation |
-| `api-server/src/lib/qualify/` | Qualification: website crawler, AI scoring, batches, AI usage |
-| `dashboard/src/pages/` | One page per step: icp, maps, qualify, history, plus home and settings |
-| `lib/db/` | Database schema (Drizzle) |
-| `scripts/` | Area list rebuild, Maps benchmark |
-
-## Database
-
-| Table | Content |
-|---|---|
-| `maps_jobs` | Maps searches and their places |
-| `qualify_batches` | Qualification batches and results |
-| `icp_config` | ICPs |
-| `platform_config` | Settings (CRM credentials) |
-
-At startup RECON loads the data once and keeps a local copy (`.db-cache`), so it only downloads rows that changed. This keeps it under the Neon free plan's transfer limit.
+| A page of the app | `dashboard/src/pages/` |
+| How Maps is searched, translations of search terms | `api-server/src/lib/maps/` |
+| How a lead is scored | `api-server/src/lib/qualify/` |
+| The ICPs | `api-server/src/lib/icpStore.ts` |
+| The database tables | `lib/db/src/schema/` |
