@@ -1148,6 +1148,9 @@ export function Qualify() {
 
   const { data: icp } = useQuery({ queryKey: ["icp-active"], queryFn: icpApi.getActive });
 
+  /** Back to the upload form and the History list. */
+  const closeBatch = () => { setActiveBatchId(null); window.history.replaceState(null, "", window.location.pathname); setLeads([]); setParsed(null); setBulkPushStatus("idle"); setVerdictTab("ALL"); setElapsedSeconds(0); };
+
   const { data: batch } = useQuery({
     queryKey: ["qualify-batch", activeBatchId],
     queryFn: () => qualifyApi.getBatch(activeBatchId!),
@@ -1485,6 +1488,9 @@ export function Qualify() {
       {/* Results */}
       {activeBatchId && batch && (
         <div className="space-y-4">
+          <button onClick={closeBatch} className="text-muted-foreground hover:text-foreground text-sm transition-colors">
+            ← Back
+          </button>
           <Card>
             <CardContent className="pt-4">
               <div className="flex items-center justify-between mb-3">
@@ -1597,7 +1603,7 @@ export function Qualify() {
                     size="sm"
                     variant="ghost"
                     className="font-mono text-xs text-muted-foreground"
-                    onClick={() => { setActiveBatchId(null); window.history.replaceState(null, "", window.location.pathname); setLeads([]); setParsed(null); setBulkPushStatus("idle"); setVerdictTab("ALL"); setElapsedSeconds(0); }}
+                    onClick={closeBatch}
                   >
                     <PlusCircle className="h-3 w-3 mr-1" /> New batch
                   </Button>
