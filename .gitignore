@@ -1,0 +1,12 @@
+node_modules
+dist/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+.neon
+.models/
+
+# Tigapo customer exports: company data, never commit
+data/tigapo/
+.db-cache/

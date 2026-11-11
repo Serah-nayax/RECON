@@ -1,0 +1,62 @@
+import { db, platformConfig } from "@workspace/db";
+import { eq } from "drizzle-orm";
+import { logger } from "./logger.js";
+
+export interface ConfigEntry {
+  key: string;
+  label: string;
+  category: string;
+  updatedAt: string;
+}
+
+const cache = new Map<string, string>();
+
+export async function initConfigStore(): Promise<void> {
+  try {
+    const rows = await db.select().from(platformConfig);
+    for (const row of rows) {
+      cache.set(row.key, row.value);
+    }
+    logger.info({ count: rows.length }, "Platform config loaded from DB");
+  } catch (err) {
+    // Saved settings (CRM keys…) would silently look unset: the startup retries instead.
+    cache.clear();
+    throw err;
+  }
+}
+
+export async function listConfigs(): Promise<ConfigEntry[]> {
+  try {
+    const rows = await db.select().from(platformConfig);
+    return rows.map((r) => ({
+      key: r.key,
+      label: r.label,
+      category: r.category,
+      updatedAt: r.updatedAt.toISOString(),
+    }));
+  } catch (err) {
+    logger.error({ err }, "Failed to list platform configs");
+    return [];
+  }
+}
+
+export async function setConfig(key: string, value: string, label: string, category: string): Promise<void> {
+  // The database first: a failed save must not leave a value that works until the next restart.
+  await db
+    .insert(platformConfig)
+    .values({ key, value, label, category, createdAt: new Date(), updatedAt: new Date() })
+    .onConflictDoUpdate({
+      target: platformConfig.key,
+      set: { value, label, category, updatedAt: new Date() },
+    });
+  cache.set(key, value);
+}
+
+export async function deleteConfig(key: string): Promise<void> {
+  await db.delete(platformConfig).where(eq(platformConfig.key, key));
+  cache.delete(key);
+}
+
+export function getConfig(key: string): string | undefined {
+  return cache.get(key) ?? process.env[key];
+}

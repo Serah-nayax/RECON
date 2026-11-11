@@ -1,0 +1,194 @@
+import { Router, type IRouter } from "express";
+import { apiKeyMiddleware } from "../lib/apiKeyMiddleware.js";
+import { createBatch, getBatch, listBatches, cancelBatch } from "../lib/qualify/qualifyStore.js";
+import { runQualifyBatch } from "../lib/qualify/qualifyRunner.js";
+import { getIcp } from "../lib/icpStore.js";
+import { logger } from "../lib/logger.js";
+import type { LeadInput } from "../lib/qualify/qualifyStore.js";
+import { canonicalizeLeadUrl } from "../lib/qualify/leadIdentity.js";
+import { summarizeByMonth, summarizeUsage } from "../lib/qualify/aiUsage.js";
+import { listMapsJobs } from "../lib/maps/mapsStore.js";
+import type { QualifyBatch } from "../lib/qualify/qualifyStore.js";
+
+/**
+ * Where a batch's leads come from, for the History list: the Maps search they were found by
+ * ("arcade · Santa Rosa"), matched by name and address since a batch does not store its search.
+ * A batch from an uploaded or pasted list gets null (the History shows its first lead names).
+ */
+function sourceIndex(): Map<string, string> {
+  const index = new Map<string, string>();
+  for (const job of listMapsJobs()) {
+    const label = job.config.label || `${job.config.searchTerm} · ${job.config.location}`;
+    for (const lead of job.results) {
+      if (lead.name) index.set(`${lead.name}|${lead.address ?? ""}`, label);
+    }
+  }
+  return index;
+}
+
+function batchSource(batch: QualifyBatch, index: Map<string, string>): string | null {
+  const votes = new Map<string, number>();
+  for (const lead of batch.leads.slice(0, 20)) {
+    const label = index.get(`${lead.input.name}|${lead.input.city ?? ""}`);
+    if (label) votes.set(label, (votes.get(label) ?? 0) + 1);
+  }
+  let best: string | null = null;
+  for (const [label, n] of votes) if (!best || n > (votes.get(best) ?? 0)) best = label;
+  return best;
+}
+
+const router: IRouter = Router();
+// Leads are processed one by one and stored in the DB, so the cap only guards request size (body limit is 10mb).
+const MAX_BATCH_SIZE = 5000;
+
+router.use(apiKeyMiddleware);
+
+router.post("/qualify", (req, res) => {
+  const body = req.body as Record<string, unknown>;
+
+  if (!body || !Array.isArray(body.leads) || body.leads.length === 0) {
+    res.status(400).json({ error: "leads must be a non-empty array" });
+    return;
+  }
+  if (body.leads.length > MAX_BATCH_SIZE) {
+    res.status(400).json({ error: `A qualification batch can contain at most ${MAX_BATCH_SIZE} leads` });
+    return;
+  }
+
+  const leads: LeadInput[] = [];
+  const seenUrls = new Set<string>();
+  for (const item of body.leads) {
+    if (!item || typeof item !== "object") {
+      res.status(400).json({ error: "Each lead must be an object" });
+      return;
+    }
+    const l = item as Record<string, unknown>;
+    if (!l.name || typeof l.name !== "string") {
+      res.status(400).json({ error: "Each lead must have a name string" });
+      return;
+    }
+    if (l.url != null && typeof l.url !== "string") {
+      res.status(400).json({ error: "A lead's url must be a string" });
+      return;
+    }
+    // A place with no website (many on Google Maps) is still qualified, from its name and category.
+    const url = String(l.url ?? "").trim();
+    const identity = url
+      ? canonicalizeLeadUrl(url)
+      : `name:${String(l.name).trim().toLowerCase()}|${String(l.city ?? "").trim().toLowerCase()}`;
+    if (seenUrls.has(identity)) continue;
+    seenUrls.add(identity);
+    leads.push({
+      name: String(l.name).trim(),
+      url,
+      category: l.category ? String(l.category) : undefined,
+      city: l.city ? String(l.city) : undefined,
+      country: l.country ? String(l.country) : undefined,
+      notes: l.notes ? String(l.notes) : undefined,
+    });
+  }
+  if (leads.length === 0) {
+    res.status(400).json({ error: "No unique leads were provided" });
+    return;
+  }
+
+  const icp = getIcp();
+  const batch = createBatch(leads, icp.name);
+
+  setImmediate(() => {
+    runQualifyBatch(batch.batchId);
+  });
+
+  res.status(202).json({
+    batchId: batch.batchId,
+    status: "pending",
+    totalCount: batch.totalCount,
+    message: `Qualification batch started. Poll GET /api/qualify/${batch.batchId} for results.`,
+  });
+});
+
+router.get("/qualify", (_req, res) => {
+  const index = sourceIndex();
+  const batches = listBatches().map((b) => ({
+    source: batchSource(b, index),
+    firstLeads: b.leads.slice(0, 3).map((l) => l.input.name),
+    verdicts: {
+      qualify: b.leads.filter((l) => l.verdict === "QUALIFY").length,
+      borderline: b.leads.filter((l) => l.verdict === "BORDERLINE").length,
+      disqualify: b.leads.filter((l) => l.verdict === "DISQUALIFY").length,
+    },
+    batchId: b.batchId,
+    status: b.status,
+    icpSnapshot: b.icpSnapshot,
+    totalCount: b.totalCount,
+    completedCount: b.completedCount,
+    createdAt: b.createdAt,
+    updatedAt: b.updatedAt,
+    usage: summarizeUsage(b.leads),
+  }));
+  res.json({ batches });
+});
+
+// AI consumption per month across all batches. Declared before /qualify/:batchId, which would match it.
+router.get("/qualify/usage", (_req, res) => {
+  const leads = listBatches().flatMap((b) =>
+    b.leads.map((l) => ({ aiUsage: l.aiUsage, completedAt: l.completedAt ?? b.createdAt })),
+  );
+  res.json({ months: summarizeByMonth(leads) });
+});
+
+router.get("/qualify/:batchId", (req, res) => {
+  const batch = getBatch(req.params.batchId);
+  if (!batch) {
+    res.status(404).json({ error: "Batch not found" });
+    return;
+  }
+  res.json({ ...batch, usage: summarizeUsage(batch.leads) });
+});
+
+router.post("/qualify/:batchId/stop", (req, res) => {
+  const ok = cancelBatch(req.params.batchId);
+  if (!ok) {
+    res.status(400).json({ error: "Batch not found or not running" });
+    return;
+  }
+  res.json({ ok: true });
+});
+
+router.post("/qualify/:batchId/retry", (req, res) => {
+  const source = getBatch(req.params.batchId);
+  if (!source) {
+    res.status(404).json({ error: "Batch not found" });
+    return;
+  }
+  // Retrying a batch still at work would score (and pay for) its remaining leads twice.
+  if (source.status === "pending" || source.status === "running") {
+    res.status(409).json({ error: "This batch is still running: stop it or wait for it to finish before retrying" });
+    return;
+  }
+
+  const incomplete = source.leads
+    .filter((l) => l.status !== "done")
+    .map((l) => l.input);
+
+  if (incomplete.length === 0) {
+    res.status(400).json({ error: "No incomplete leads to retry" });
+    return;
+  }
+
+  const icp = getIcp();
+  const newBatch = createBatch(incomplete, icp.name);
+
+  setImmediate(() => {
+    runQualifyBatch(newBatch.batchId);
+  });
+
+  res.status(202).json({
+    batchId: newBatch.batchId,
+    status: "pending",
+    totalCount: newBatch.totalCount,
+    message: `Retrying ${newBatch.totalCount} incomplete leads.`,
+  });
+});
+
+export default router;
