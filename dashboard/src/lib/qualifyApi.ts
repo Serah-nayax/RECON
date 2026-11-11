@@ -178,6 +178,14 @@ export interface UsageSummary {
   unpricedModels: string[];
 }
 
+/** A batch in the History list: no leads, but where they come from and how they were scored. */
+export interface BatchSummary extends Omit<QualifyBatch, "leads"> {
+  /** The Maps search the leads were found by ("arcade · Santa Rosa"), null for an uploaded list. */
+  source: string | null;
+  firstLeads: string[];
+  verdicts: { qualify: number; borderline: number; disqualify: number };
+}
+
 export interface MonthUsage extends UsageSummary {
   month: string;
 }
@@ -220,7 +228,7 @@ export const qualifyApi = {
     ),
   getBatch: (batchId: string) => apiFetch<QualifyBatch>(`/api/qualify/${batchId}`),
   listBatches: () =>
-    apiFetch<{ batches: Omit<QualifyBatch, "leads">[] }>("/api/qualify"),
+    apiFetch<{ batches: BatchSummary[] }>("/api/qualify"),
   stopBatch: (batchId: string) =>
     apiFetch<{ ok: boolean }>(`/api/qualify/${batchId}/stop`, { method: "POST" }),
   usageByMonth: () => apiFetch<{ months: MonthUsage[] }>("/api/qualify/usage"),

@@ -5,6 +5,7 @@ import { Logo } from "@/components/logo";
 import { HelpModal } from "@/components/help-modal";
 import { getCrawlerApiKey } from "@/lib/crawlerAuth";
 import { useServerInfo } from "@/lib/serverInfo";
+import { stepStyle } from "@/lib/steps";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
@@ -45,8 +46,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="app-bg flex min-h-screen w-full flex-col text-foreground selection:bg-primary selection:text-primary-foreground font-sans">
       <header className="sticky top-0 z-50 flex h-16 items-center gap-2 border-b border-white/[0.06] bg-background/70 px-6 backdrop-blur-xl">
-        <Link href="/" className="flex items-center gap-2 mr-6 font-semibold tracking-tight text-foreground hover:text-primary transition-colors" data-testid="link-home-logo">
-          <Logo className="h-8 w-8 drop-shadow-[0_0_12px_rgba(125,211,252,0.35)]" />
+        <Link href="/" className="group flex items-center gap-2 mr-6 font-semibold tracking-tight text-foreground hover:text-primary transition-colors" data-testid="link-home-logo">
+          <Logo animated className="h-8 w-8 drop-shadow-[0_0_10px_rgba(255,77,94,0.35)] transition-transform group-hover:scale-110" />
           <span className="text-lg tracking-[0.12em]">RECON</span>
         </Link>
         <nav className="flex items-center gap-1">
@@ -56,12 +57,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <Link key={link.href} href={link.href} className={`group ${linkClass(link.href)}`}>
                 <span
                   className={`flex h-5 w-5 items-center justify-center rounded-full text-xs font-semibold tabular-nums ${
-                    location.startsWith(link.href) ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                    location.startsWith(link.href) ? `${stepStyle(link.step).badge} shadow-md` : "bg-muted text-muted-foreground group-hover:bg-white/10"
                   }`}
                 >
                   {link.step}
                 </span>
-                <Icon className="hidden lg:block h-4 w-4" />
+                <Icon className={`hidden lg:block h-4 w-4 ${location.startsWith(link.href) ? stepStyle(link.step).text : ""}`} />
                 {link.label}
               </Link>
             );

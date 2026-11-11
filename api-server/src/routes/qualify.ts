@@ -7,6 +7,35 @@ import { logger } from "../lib/logger.js";
 import type { LeadInput } from "../lib/qualify/qualifyStore.js";
 import { canonicalizeLeadUrl } from "../lib/qualify/leadIdentity.js";
 import { summarizeByMonth, summarizeUsage } from "../lib/qualify/aiUsage.js";
+import { listMapsJobs } from "../lib/maps/mapsStore.js";
+import type { QualifyBatch } from "../lib/qualify/qualifyStore.js";
+
+/**
+ * Where a batch's leads come from, for the History list: the Maps search they were found by
+ * ("arcade · Santa Rosa"), matched by name and address since a batch does not store its search.
+ * A batch from an uploaded or pasted list gets null (the History shows its first lead names).
+ */
+function sourceIndex(): Map<string, string> {
+  const index = new Map<string, string>();
+  for (const job of listMapsJobs()) {
+    const label = job.config.label || `${job.config.searchTerm} · ${job.config.location}`;
+    for (const lead of job.results) {
+      if (lead.name) index.set(`${lead.name}|${lead.address ?? ""}`, label);
+    }
+  }
+  return index;
+}
+
+function batchSource(batch: QualifyBatch, index: Map<string, string>): string | null {
+  const votes = new Map<string, number>();
+  for (const lead of batch.leads.slice(0, 20)) {
+    const label = index.get(`${lead.input.name}|${lead.input.city ?? ""}`);
+    if (label) votes.set(label, (votes.get(label) ?? 0) + 1);
+  }
+  let best: string | null = null;
+  for (const [label, n] of votes) if (!best || n > (votes.get(best) ?? 0)) best = label;
+  return best;
+}
 
 const router: IRouter = Router();
 // Leads are processed one by one and stored in the DB, so the cap only guards request size (body limit is 10mb).
@@ -79,7 +108,15 @@ router.post("/qualify", (req, res) => {
 });
 
 router.get("/qualify", (_req, res) => {
+  const index = sourceIndex();
   const batches = listBatches().map((b) => ({
+    source: batchSource(b, index),
+    firstLeads: b.leads.slice(0, 3).map((l) => l.input.name),
+    verdicts: {
+      qualify: b.leads.filter((l) => l.verdict === "QUALIFY").length,
+      borderline: b.leads.filter((l) => l.verdict === "BORDERLINE").length,
+      disqualify: b.leads.filter((l) => l.verdict === "DISQUALIFY").length,
+    },
     batchId: b.batchId,
     status: b.status,
     icpSnapshot: b.icpSnapshot,

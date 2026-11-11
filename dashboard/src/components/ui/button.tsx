@@ -12,7 +12,7 @@ const buttonVariants = cva(
       variant: {
         default:
            // no hover, and add primary border
-           "bg-primary text-primary-foreground border border-primary-border",
+           "bg-gradient-to-r from-sky-500 to-indigo-500 text-white border border-white/10 shadow-[0_6px_20px_-8px_rgba(99,102,241,0.7)] hover:shadow-[0_8px_26px_-8px_rgba(99,102,241,0.9)] hover:brightness-110 transition-[filter,box-shadow]",
         destructive:
           "bg-destructive text-destructive-foreground shadow-sm border-destructive-border",
         outline:

@@ -1,4 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { Input } from "@/components/ui/input";
 import { useLocation } from "wouter";
 import { PageHeader } from "@/components/page-header";
 import { format } from "date-fns";
@@ -6,7 +8,7 @@ import { qualifyApi } from "@/lib/qualifyApi";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { History as HistoryIcon, Loader2, Target, ArrowRight, CheckCircle2, XCircle, Clock, AlertCircle, Square } from "lucide-react";
+import { History as HistoryIcon, Loader2, Target, Search, MapPin, FileText, ArrowRight, CheckCircle2, XCircle, Clock, AlertCircle, Square } from "lucide-react";
 
 function StatusBadge({ status }: { status: string }) {
   switch (status) {
@@ -39,7 +41,15 @@ export default function History() {
     queryFn: qualifyApi.listBatches,
   });
 
-  const batches = batchData?.batches ?? [];
+  const [query, setQuery] = useState("");
+  const all = batchData?.batches ?? [];
+  // Search by place, search term, ICP, lead name or date, all at once.
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const batches = words.length === 0 ? all : all.filter((b) => {
+    const text = [b.source, b.icpSnapshot, ...b.firstLeads, format(new Date(b.createdAt), "MMM d yyyy")]
+      .join(" ").toLowerCase();
+    return words.every((w) => text.includes(w));
+  });
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -51,11 +61,21 @@ export default function History() {
       />
 
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 space-y-0">
             <CardTitle className="text-base flex items-center gap-2">
-              <Target className="h-4 w-4 text-primary" />
+              <Target className="h-4 w-4 text-blue-300" />
               Qualifications
+              {all.length > 0 && <span className="text-xs font-normal text-muted-foreground">({batches.length === all.length ? all.length : `${batches.length} of ${all.length}`})</span>}
             </CardTitle>
+            <div className="relative w-full sm:w-80">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search a place, term, ICP or lead…"
+                className="pl-9"
+              />
+            </div>
           </CardHeader>
           <CardContent>
             {batchLoading ? (
@@ -68,6 +88,8 @@ export default function History() {
                 <AlertCircle className="h-5 w-5" />
                 <span className="text-sm">Failed to load batch history</span>
               </div>
+            ) : all.length > 0 && batches.length === 0 ? (
+              <p className="text-center p-8 text-sm text-muted-foreground">No qualification matches “{query}”.</p>
             ) : batches.length === 0 ? (
               <div className="text-center p-8 text-muted-foreground border border-dashed border-muted rounded-lg">
                 <Target className="h-8 w-8 mx-auto mb-2 opacity-30" />
@@ -89,14 +111,27 @@ export default function History() {
                       <BatchStatusIcon status={batch.status} />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <p className="text-sm font-medium truncate">{batch.icpSnapshot}</p>
+                          {batch.source ? (
+                            <MapPin className="h-3.5 w-3.5 text-cyan-300 shrink-0" />
+                          ) : (
+                            <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                          )}
+                          <p className="text-sm font-medium truncate">
+                            {batch.source ?? `List: ${batch.firstLeads.join(", ")}${batch.totalCount > batch.firstLeads.length ? "…" : ""}`}
+                          </p>
                           <StatusBadge status={batch.status} />
                         </div>
-                        <p className="text-xs text-muted-foreground font-mono mt-0.5">
+                        <p className="text-xs text-muted-foreground mt-1 truncate">
                           {format(new Date(batch.createdAt), "MMM d, yyyy · HH:mm")}
-                          <span className="ml-3">{batch.completedCount}/{batch.totalCount} leads</span>
+                          <span className="mx-2">·</span>{batch.icpSnapshot}
+                          <span className="mx-2">·</span>{batch.completedCount}/{batch.totalCount} leads
                           {batch.status !== "done" && <span className="ml-2">{pct}%</span>}
                         </p>
+                      </div>
+                      <div className="hidden md:flex items-center gap-1.5 shrink-0 text-xs tabular-nums">
+                        <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-emerald-300" title="QUALIFY">{batch.verdicts.qualify} fit</span>
+                        <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-amber-300" title="BORDERLINE">{batch.verdicts.borderline} maybe</span>
+                        <span className="rounded-full bg-white/5 px-2 py-0.5 text-muted-foreground" title="DISQUALIFY">{batch.verdicts.disqualify} no</span>
                       </div>
                       <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground group-hover:text-primary transition-colors shrink-0">
                         <ArrowRight className="h-4 w-4" />

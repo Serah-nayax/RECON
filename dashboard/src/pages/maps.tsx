@@ -16,6 +16,7 @@ import {
   type AreaSuggestion,
 } from "@/lib/mapsApi";
 import { MapGridPicker } from "@/components/MapGridPicker";
+import { QualifyIcpDialog } from "@/components/QualifyIcpDialog";
 import { icpApi, type IcpConfig } from "@/lib/qualifyApi";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -66,6 +67,21 @@ function searchSteps(job: MapsJob) {
     ? (STEP1_SHARE * (step1.length - step1Left)) / step1.length
     : 0;
   return { inStep2, step1Done: step1Left === 0, cellsLeft: inStep2 ? step2Left : step1Left, pct };
+}
+
+/**
+ * How long a finished search took: from its start to its last update (the moment it ended).
+ * A search paused then resumed also counts the time it stayed paused.
+ */
+function searchDuration(job: { createdAt: string; updatedAt: string; status: string }): string | null {
+  if (job.status !== "done") return null;
+  const secs = Math.round((new Date(job.updatedAt).getTime() - new Date(job.createdAt).getTime()) / 1000);
+  if (!(secs > 0)) return null;
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = secs % 60;
+  if (h > 0) return `${h} h ${m} min`;
+  return m > 0 ? `${m} min ${s} s` : `${s} s`;
 }
 
 function estimateTimeLeft(job: MapsJob, remaining: number, inStep2: boolean): string {
@@ -400,9 +416,19 @@ function JobProgress({ jobId, onBack }: { jobId: string; onBack: () => void }) {
 
   const [, setLocation] = useLocation();
 
+  // "Qualify All" first asks which ICP scores the places; another pick becomes the active ICP.
+  const [icpDialogOpen, setIcpDialogOpen] = useState(false);
   const qualifyAllMut = useMutation({
-    mutationFn: () => mapsApi.qualifyAll(jobId),
+    mutationFn: async ({ icpId, changed }: { icpId: string; changed: boolean }) => {
+      if (changed) {
+        await icpApi.activate(icpId);
+        void queryClient.invalidateQueries({ queryKey: ["active-icp"] });
+        void queryClient.invalidateQueries({ queryKey: ["icps"] });
+      }
+      return mapsApi.qualifyAll(jobId);
+    },
     onSuccess: (res) => {
+      setIcpDialogOpen(false);
       toast({ title: `${res.count} lead(s) sent to Qualifier`, description: "Opening Lead Qualifier…" });
       setTimeout(() => setLocation(`/qualify?batch=${res.batchId}`), 600);
     },
@@ -644,7 +670,10 @@ function JobProgress({ jobId, onBack }: { jobId: string; onBack: () => void }) {
       {job.status === "done" && (
         <div className="flex items-center gap-2 text-emerald-400 text-sm">
           <CheckCircle2 className="h-4 w-4" />
-          <span>Search complete — {shownLeads.length.toLocaleString()} businesses found</span>
+          <span>
+            Search complete — {shownLeads.length.toLocaleString()} businesses found
+            {searchDuration(job) && <span className="text-muted-foreground"> in {searchDuration(job)}</span>}
+          </span>
         </div>
       )}
 
@@ -677,7 +706,7 @@ function JobProgress({ jobId, onBack }: { jobId: string; onBack: () => void }) {
                   size="sm"
                   variant="outline"
                   className="h-7 px-3 text-xs border-violet-500/30 text-violet-400 hover:bg-violet-500/10"
-                  onClick={() => qualifyAllMut.mutate()}
+                  onClick={() => setIcpDialogOpen(true)}
                   disabled={qualifyAllMut.isPending}
                   title={[
                     `Send all ${shownLeads.length} places to the Lead Qualifier (next step).`,
@@ -694,6 +723,16 @@ function JobProgress({ jobId, onBack }: { jobId: string; onBack: () => void }) {
                   )}
                   Qualify All ({shownLeads.length})
                 </Button>
+                <QualifyIcpDialog
+                  open={icpDialogOpen}
+                  onOpenChange={setIcpDialogOpen}
+                  count={shownLeads.length}
+                  searchTerms={
+                    job.termYield ? job.termYield.filter((t) => !t.auto).map((t) => t.term) : [job.config.searchTerm]
+                  }
+                  pending={qualifyAllMut.isPending}
+                  onConfirm={(icpId, changed) => qualifyAllMut.mutate({ icpId, changed })}
+                />
               </div>
               )}
             </div>
@@ -1018,9 +1057,9 @@ export function MapsSearch() {
         description="Every place of a kind in an area, from Google Maps."
       />
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,440px)_minmax(0,1fr)] items-start">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,440px)_minmax(0,1fr)] items-stretch">
         {/* ── Form: what, where, start ── */}
-        <Card className="lg:sticky lg:top-24">
+        <Card>
           <CardContent className="p-6 space-y-7">
             <FormStep n={1} title="What to look for">
               
@@ -1249,8 +1288,8 @@ export function MapsSearch() {
           </CardContent>
         </Card>
 
-        {/* ── Map ── */}
-        <div className="space-y-3">
+        {/* ── Map: same height as the form next to it ── */}
+        <div className="flex flex-col gap-3">
       <MapGridPicker
         cells={previewCells}
         selectedIndices={selectedCellIndices}
@@ -1269,10 +1308,10 @@ export function MapsSearch() {
         onClearDraw={handleClearDraw}
         loading={previewLoading}
         placeholder=""
-        height={560}
+        fill
       />
       {cellSelectionIgnored && (
-        <p className="text-xs font-mono text-amber-400 -mt-3">
+        <p className="text-xs font-mono text-amber-400">
           Several areas are searched: every cell of each area will be searched. To search only
           some cells, search one area at a time.
         </p>
@@ -1301,6 +1340,7 @@ export function MapsSearch() {
                       </p>
                       <p className="text-xs text-muted-foreground mt-0.5 truncate">
                         {job.config.scope === "worldwide" ? "Worldwide" : job.config.location}
+                        {searchDuration(job) && <> · took {searchDuration(job)}</>}
                       </p>
                     </div>
                     <span className="text-sm tabular-nums text-muted-foreground shrink-0">

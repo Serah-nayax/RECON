@@ -37,6 +37,22 @@ function FitBounds({ cells }: { cells: GridCell[] }) {
   return null;
 }
 
+/**
+ * Leaflet measures its box once, when it is created. When the page layout settles later (the
+ * map now stretches to the height of the form next to it), the tiles only covered part of the
+ * box. Watching the box and telling Leaflet its new size keeps the tiles filling it.
+ */
+function KeepSizeInSync() {
+  const map = useMap();
+  useEffect(() => {
+    const box = map.getContainer();
+    const observer = new ResizeObserver(() => map.invalidateSize());
+    observer.observe(box);
+    return () => observer.disconnect();
+  }, [map]);
+  return null;
+}
+
 function FitDrawnBbox({ bbox }: { bbox: DrawnBbox }) {
   const map = useMap();
   useEffect(() => {
@@ -123,8 +139,10 @@ export interface MapGridPickerProps {
   onClearDraw: () => void;
   loading?: boolean;
   placeholder?: string;
-  /** Height of the map in pixels. */
+  /** Height of the map in pixels. Ignored when `fill` is set. */
   height?: number;
+  /** Stretch to the height of the parent (which must give it one), with a minimum. */
+  fill?: boolean;
 }
 
 export function MapGridPicker({
@@ -139,6 +157,7 @@ export function MapGridPicker({
   loading,
   placeholder,
   height = 380,
+  fill = false,
 }: MapGridPickerProps) {
   const [drawing, setDrawing] = useState(false);
 
@@ -161,7 +180,9 @@ export function MapGridPicker({
   }
 
   return (
-    <div className="flex flex-col overflow-hidden rounded-xl border border-white/[0.07] bg-card shadow-[0_10px_30px_-15px_rgba(0,0,0,0.7)]">
+    <div
+      className={`flex flex-col overflow-hidden rounded-xl border border-white/[0.07] bg-card shadow-[0_10px_30px_-15px_rgba(0,0,0,0.7)]${fill ? " flex-1" : ""}`}
+    >
       {/* Toolbar */}
       <div className="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-white/[0.07]">
         <span className="text-sm text-muted-foreground">
@@ -230,13 +251,19 @@ export function MapGridPicker({
       </div>
 
       {/* Map */}
-      <div style={{ height }}>
+      <div className={fill ? "flex-1 min-h-[460px]" : undefined} style={fill ? undefined : { height }}>
         <MapContainer
-          center={[20, 0]}
-          zoom={2}
+          center={[35, 5]}
+          zoom={3}
+          minZoom={2}
+          // One world, no grey band above the poles; tiles still repeat sideways on wide screens.
+          maxBounds={[[-85, -540], [85, 540]]}
+          maxBoundsViscosity={1}
+          worldCopyJump
           style={{ height: "100%", width: "100%", background: "#0f1420" }}
           zoomControl
         >
+          <KeepSizeInSync />
           <TileLayer
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
